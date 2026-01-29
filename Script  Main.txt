@@ -484,6 +484,13 @@ Bind(RunService.Stepped, function()
     Root.AssemblyLinearVelocity = Vector3.zero 
     BodyVelocity.Velocity = Vector3.zero -- Ensure no drift
     BodyAngularVelocity.AngularVelocity = Vector3.new(9000, 9000, 9000) -- Max rotation torque
+    
+    -- [[ CAMERA STABILIZER ]] --
+    -- Fixes the "dizzy" effect by forcing the camera to look at the target steadily
+    local Cam = workspace.CurrentCamera
+    if Cam then -- Keep camera focused on target without spinning
+        Cam.CFrame = CFrame.new(Cam.CFrame.Position, targetRoot.Position)
+    end
 end)
 
 -- KILL AOE Loop
@@ -1035,4 +1042,3 @@ game:GetService("StarterGui"):SetCore("SendNotification", {
     Text = "Loaded! Press LeftControl to Toggle.",
     Duration = 3
 })
-

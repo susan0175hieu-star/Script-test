@@ -516,6 +516,29 @@ BodyAngularVelocity.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
 Bind(RunService.Stepped, function()
     local hasTarget = FlingTarget and FlingTarget.Character and FlingTarget.Character:FindFirstChild("HumanoidRootPart")
     
+    -- SAFETY CHECK: If we fall into the void (Countered/BgBug), disable Fling immediately
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        if LocalPlayer.Character.HumanoidRootPart.Position.Y < -500 then
+            FlingEnabled = false
+            
+            -- Reset Physics
+            LocalPlayer.Character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+            LocalPlayer.Character.HumanoidRootPart.AssemblyAngularVelocity = Vector3.zero
+            
+            if LocalPlayer.Character:FindFirstChild("Humanoid") then
+                LocalPlayer.Character.Humanoid.PlatformStand = false
+                LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Dead) -- Force respawn
+            end
+
+            -- Auto Re-enable after 2 seconds (Respawn time)
+            task.delay(2, function()
+                FlingEnabled = true
+            end)
+            return
+        end
+    end
+     
+    -- NORMAL CHECKS
     if not FlingEnabled or not hasTarget or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then 
         BodyVelocity.Parent = nil
         BodyAngularVelocity.Parent = nil
@@ -527,6 +550,12 @@ Bind(RunService.Stepped, function()
     
     local Root = LocalPlayer.Character.HumanoidRootPart
     local Hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+    
+    -- Check if we died
+    if Hum and Hum.Health <= 0 then
+        FlingEnabled = false
+        return
+    end
     
     if Hum then Hum.PlatformStand = true end
     
@@ -1007,18 +1036,16 @@ RefreshPlayers()
 local function ChangeCharacter(charName)
     CurrentFakeChar = charName
     
-    -- 1. Server Event (DISABLED TO FORCE CONSISTENT DELAY/BYPASS BEHAVIOR)
-    -- The user wants all characters to behave like BigBrain (slow delayed reset)
-    -- So we skip the official remote and force the Attribute + Death method
-    
-    -- local args = {
-    --     [1] = "ChangeCharacter",
-    --     [2] = charName
-    -- }
-    -- local Event = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("ServerEvent")
-    -- if Event then Event:FireServer(unpack(args)) end
+    -- 1. Server Event (RESTORED DEFAULT MECHANISM)
+    -- This allows free characters (Mark, PowerPlex, TechSuit) to switch instantly/normally
+    local args = {
+        [1] = "ChangeCharacter",
+        [2] = charName
+    }
+    local Event = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("ServerEvent")
+    if Event then Event:FireServer(unpack(args)) end
 
-    -- 2. Client Bypass (Attribute) - THIS IS THE METHDO WE WANT FOR ALL
+    -- 2. Client Bypass (Attribute) - Keeps working as backup/for paid chars
     pcall(function() LocalPlayer:SetAttribute("Character", charName) end)
     
     -- 3. Force Respawn with Delay (Like Big Brain/Atom Mistress)

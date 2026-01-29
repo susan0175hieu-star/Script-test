@@ -526,7 +526,8 @@ Bind(RunService.Stepped, function()
     local targetRoot = FlingTarget.Character.HumanoidRootPart
     
     -- Chaotic Fling: Lock position NEAR target (jitter) + Random Rotation
-    local jitter = Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * 4
+    -- Increased multiplier to 8 for MAXIMUM CHAOS
+    local jitter = Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * 8
     Root.CFrame = CFrame.new(targetRoot.Position + jitter) * CFrame.Angles(math.random(-10, 10), math.random(-10, 10), math.random(-10, 10))
     Root.AssemblyLinearVelocity = Vector3.zero 
     BodyVelocity.Velocity = Vector3.zero -- Ensure no drift

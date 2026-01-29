@@ -1007,27 +1007,28 @@ RefreshPlayers()
 local function ChangeCharacter(charName)
     CurrentFakeChar = charName
     
-    -- 1. Server Event (Try standard)
-    local args = {
-        [1] = "ChangeCharacter",
-        [2] = charName
-    }
-    local Event = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("ServerEvent")
-    if Event then Event:FireServer(unpack(args)) end
+    -- 1. Server Event (DISABLED TO FORCE CONSISTENT DELAY/BYPASS BEHAVIOR)
+    -- The user wants all characters to behave like BigBrain (slow delayed reset)
+    -- So we skip the official remote and force the Attribute + Death method
+    
+    -- local args = {
+    --     [1] = "ChangeCharacter",
+    --     [2] = charName
+    -- }
+    -- local Event = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("ServerEvent")
+    -- if Event then Event:FireServer(unpack(args)) end
 
-    -- 2. Client Bypass (Attribute)
+    -- 2. Client Bypass (Attribute) - THIS IS THE METHDO WE WANT FOR ALL
     pcall(function() LocalPlayer:SetAttribute("Character", charName) end)
     
-    -- 3. Visuals/Modules (BigBrain & AtomMistress specific)
-    if charName == "BigBrain" or charName == "AtomMistress" then
-        task.delay(0.5, function()
-            -- Force Respawn to apply
-             local Char = LocalPlayer.Character
-             if Char and Char:FindFirstChild("Humanoid") then Char.Humanoid.Health = 0 end
-             
-             -- Note: Logic loading module skipped for brevity/safety, keeping it simple as user requested optimization
-        end)
-    end
+    -- 3. Force Respawn with Delay (Like Big Brain/Atom Mistress)
+    -- This allows the server to process the attribute change before we die
+    task.delay(0.5, function()
+         local Char = LocalPlayer.Character
+         if Char and Char:FindFirstChild("Humanoid") then 
+             Char.Humanoid.Health = 0 
+         end
+    end)
 end
 
 -- Populate Character List
@@ -1114,7 +1115,7 @@ local function CreateStylishCharBtn(text, realName, themeColor)
 end
 
 CreateStylishCharBtn("MARK", "Mark", Color3.fromRGB(255, 235, 59))                   -- Vàng
-CreateStylishCharBtn("ELECTRICITY GUY", "Electricity Guy", Color3.fromRGB(255, 110, 110))        -- Đỏ Nhạt
+CreateStylishCharBtn("ELECTRICITY GUY", "PowerPlex", Color3.fromRGB(255, 110, 110))        -- Internal Name: PowerPlex
 CreateStylishCharBtn("TECH SUIT", "TechSuit", Color3.fromRGB(64, 224, 208))           -- Turquoise
 CreateStylishCharBtn("BIG BRAIN", "BigBrain", Color3.fromRGB(50, 255, 50))            -- Green
 CreateStylishCharBtn("ATOM MISTRESS", "AtomMistress", Color3.fromRGB(255, 150, 200)) -- Pink

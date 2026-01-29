@@ -443,10 +443,18 @@ local function CreateCombatSlider(name, min, max, init, callback)
 end
 
 -- Create Combat UI
+local KillAura = false
+local KillAuraTP = false -- New Toggle Variable
+
 CreateCombatToggle("KILL AOE", function(toggle)
     if toggle then KillAura = not KillAura end
     return KillAura
 end)
+
+CreateCombatToggle("KILL AURA TP", function(toggle)
+    if toggle then KillAuraTP = not KillAuraTP end
+    return KillAuraTP
+end, Color3.fromRGB(255, 100, 0)) -- Orange Color for Danger
 
 CreateCombatSlider("AOE Radius", 10, 100, 50, function(val)
     KillRadius = val
@@ -455,8 +463,6 @@ end)
 CreateCombatSlider("Attack Delay (ms)", 10, 500, 50, function(val)
     AttackDelay = val / 1000
 end)
-
-
 
 local OriginalFlingPos = nil
 local OriginalCamSubject = nil
@@ -477,9 +483,6 @@ CreateCombatToggle("FLING", function(toggle)
             -- Detach Camera from spinning player
             if Cam then
                 OriginalCamSubject = Cam.CameraSubject
-                -- Ideally set subject to Humanoid (less spinny) or the Target
-                -- We'll keep it on Subject but rely on the RenderStepped override mainly
-                -- But disabling AutoRotate is key.
             end
         else
             -- JUST DISABLED
@@ -568,14 +571,32 @@ Bind(RunService.Heartbeat, function()
     if tick() - LastAttack < AttackDelay then return end
     LastAttack = tick()
     
-    if KillAura and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+    if (KillAura or KillAuraTP) and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local myRoot = LocalPlayer.Character.HumanoidRootPart
+        local myPos = myRoot.Position
         
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
-                local targetDist = (p.Character.HumanoidRootPart.Position - myPos).Magnitude
+                local targetRoot = p.Character.HumanoidRootPart
+                local targetDist = (targetRoot.Position - myPos).Magnitude
                 
-                if targetDist < KillRadius then
+                -- Standard Aura (Distance Check) OR TP Aura (Always hits if within slightly larger range or purely selected)
+                -- For safety, we keep TP range somewhat limited or logic based
+                
+                local canAttack = false
+                
+                -- AUTO TP: Only target the SELECTED player
+                if KillAuraTP and p == SelectedPlayer then
+                     -- TELEPORT BEHIND TARGET
+                     myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3) 
+                     canAttack = true
+                
+                -- AUTO FARM/AURA: Distance check for everyone else
+                elseif KillAura and targetDist < KillRadius then
+                     canAttack = true
+                end
+                
+                if canAttack then
                     -- Attack target p
                     local targetChar = p.Character
                     
@@ -601,17 +622,13 @@ Bind(RunService.Heartbeat, function()
                     end
                     
                     -- 2. Tool Activate / Click (Melee Range Only)
-                    if targetDist < 15 then 
+                    if targetDist < 15 or KillAuraTP then 
                         local Tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
                         if Tool then Tool:Activate() end
                     end
                 end
             end
         end
-        
-        -- Fallback VIM Click (Once per loop if no targets to at least swing)
-        -- VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-        -- VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
     end
 end)
 

@@ -218,9 +218,16 @@ local PlayerContainer = Create("ScrollingFrame", {
     Position = UDim2.new(0, 5, 0, 35),
     BackgroundTransparency = 1,
     ScrollBarThickness = 4,
+    ScrollBarImageColor3 = COLORS.SELECTED,
+    CanvasSize = UDim2.new(0, 0, 0, 0), -- Reset to allow auto
+    AutomaticCanvasSize = Enum.AutomaticSize.Y, -- IMPORTANT for scrolling
     Parent = MidPanel
 })
-Create("UIListLayout", { Padding = UDim.new(0, 5), Parent = PlayerContainer })
+Create("UIListLayout", { 
+    Padding = UDim.new(0, 5), 
+    SortOrder = Enum.SortOrder.LayoutOrder, 
+    Parent = PlayerContainer 
+})
 
 -- Column 3: Combat
 local RightPanel = Create("Frame", {

@@ -351,9 +351,10 @@ local function CreateCombatSlider(name, min, max, init, callback)
     })
     CreateCorner(2, dot)
     
+    -- Label (Split from value)
     local label = Create("TextLabel", {
-        Text = name .. ": " .. init,
-        Size = UDim2.new(1, -10, 0, 20),
+        Text = name .. ":",
+        Size = UDim2.new(1, -70, 0, 20),
         Position = UDim2.new(0, 10, 0, 0),
         BackgroundTransparency = 1,
         TextColor3 = COLORS.TEXT,
@@ -362,6 +363,20 @@ local function CreateCombatSlider(name, min, max, init, callback)
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = frame
     })
+    
+    -- Input Box (New)
+    local inputBox = Create("TextBox", {
+        Text = tostring(init),
+        Size = UDim2.new(0, 50, 0, 20),
+        Position = UDim2.new(1, -55, 0, 0),
+        BackgroundColor3 = Color3.fromRGB(20, 20, 25), -- Slightly darker for input field
+        TextColor3 = COLORS.SELECTED,
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
+        Parent = frame
+    })
+    CreateCorner(4, inputBox)
+    local inputStroke = CreateStroke(1, Color3.fromRGB(60, 60, 65), inputBox)
     
     local bar = Create("Frame", {
         Size = UDim2.new(1, 0, 0, 6),
@@ -384,9 +399,25 @@ local function CreateCombatSlider(name, min, max, init, callback)
     local function Update(val)
         local pct = math.clamp((val - min) / (max - min), 0, 1)
         fill.Size = UDim2.new(pct, 0, 1, 0)
-        label.Text = name .. ": " .. val
+        inputBox.Text = tostring(val)
     end
     
+    -- Sync Input Box -> Slider
+    Bind(inputBox.FocusLost, function(enter)
+        local num = tonumber(inputBox.Text)
+        if num then
+            num = math.clamp(num, min, max)
+            Update(num)
+            callback(num)
+        else
+            -- Reset if invalid
+            local currentPct = fill.Size.X.Scale
+            local currentVal = math.floor(min + (currentPct * (max - min)))
+            inputBox.Text = tostring(currentVal)
+        end
+    end)
+    
+    -- Sync Slider -> Input Box
     Bind(bar.InputBegan, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end
     end)

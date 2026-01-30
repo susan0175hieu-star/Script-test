@@ -1056,12 +1056,15 @@ local function ChangeCharacter(charName)
     
     -- 1. Server Event (RESTORED DEFAULT MECHANISM)
     -- This allows free characters (Mark, PowerPlex, TechSuit) to switch instantly/normally
-    local args = {
-        [1] = "ChangeCharacter",
-        [2] = charName
-    }
-    local Event = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("ServerEvent")
-    if Event then Event:FireServer(unpack(args)) end
+    -- OPTIMIZATION: Skip FireServer for BigBrain/Paid chars to avoid server-side checks/purchase prompts
+    if charName ~= "BigBrain" and charName ~= "AtomMistress" then
+        local args = {
+            [1] = "ChangeCharacter",
+            [2] = charName
+        }
+        local Event = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("ServerEvent")
+        if Event then Event:FireServer(unpack(args)) end
+    end
 
     -- 2. Client Bypass (Attribute) - Keeps working as backup/for paid chars
     pcall(function() LocalPlayer:SetAttribute("Character", charName) end)

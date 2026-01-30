@@ -138,6 +138,24 @@ local MinimizeBtn = Create("TextButton", {
     Parent = TopBar
 })
 
+-- Reset Button
+local ResetBtn = Create("TextButton", {
+    Text = "R",
+    Size = UDim2.new(0, 40, 1, 0),
+    Position = UDim2.new(1, -120, 0, 0),
+    BackgroundTransparency = 1,
+    TextColor3 = COLORS.TEXT,
+    Font = Enum.Font.GothamBold,
+    TextSize = 18,
+    Parent = TopBar
+})
+
+Bind(ResetBtn.MouseButton1Click, function()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.Health = 0
+    end
+end)
+
 -- Minimized Icon (Circular)
 local OpenBtn = Create("TextButton", {
     Size = UDim2.new(0, 50, 0, 50),

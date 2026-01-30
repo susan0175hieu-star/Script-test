@@ -104,7 +104,7 @@ local TopCover = Create("Frame", { -- Cover bottom corners of top bar
 })
 
 Create("TextLabel", {
-    Text = "  GUI",
+    Text = "  Gui",
     Size = UDim2.new(1, -100, 1, 0),
     BackgroundTransparency = 1,
     TextColor3 = COLORS.TEXT,
@@ -193,7 +193,7 @@ local LeftPanel = Create("Frame", {
 })
 CreateCorner(6, LeftPanel)
 Create("TextLabel", {
-    Text = "CHARACTERS",
+    Text = "Characters",
     Size = UDim2.new(1, 0, 0, 30),
     BackgroundTransparency = 1,
     TextColor3 = COLORS.TEXT,
@@ -223,7 +223,7 @@ local MidPanel = Create("Frame", {
 })
 CreateCorner(6, MidPanel)
 Create("TextLabel", {
-    Text = "PLAYERS (ESP)",
+    Text = "Players (ESP)",
     Size = UDim2.new(1, 0, 0, 30),
     BackgroundTransparency = 1,
     TextColor3 = COLORS.TEXT,
@@ -256,7 +256,7 @@ local RightPanel = Create("Frame", {
 })
 CreateCorner(6, RightPanel)
 Create("TextLabel", {
-    Text = "COMBAT",
+    Text = "Combat",
     Size = UDim2.new(1, 0, 0, 30),
     BackgroundTransparency = 1,
     TextColor3 = COLORS.TEXT,
@@ -465,12 +465,12 @@ local KillAura = false
 local KillAuraTP = false -- New Toggle Variable
 local OriginalAuraPos = nil -- Store original position
 
-CreateCombatToggle("KILL AOE", function(toggle)
+CreateCombatToggle("Kill AOE", function(toggle)
     if toggle then KillAura = not KillAura end
     return KillAura
 end)
 
-CreateCombatToggle("KILL AURA TP", function(toggle)
+CreateCombatToggle("Kill Aura TP", function(toggle)
     if toggle then 
         KillAuraTP = not KillAuraTP 
         
@@ -501,7 +501,7 @@ end)
 local OriginalFlingPos = nil
 local OriginalCamSubject = nil
 
-CreateCombatToggle("FLING", function(toggle)
+CreateCombatToggle("Fling", function(toggle)
     if toggle then 
         FlingEnabled = not FlingEnabled
         local Hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
@@ -1234,11 +1234,11 @@ local function CreateStylishCharBtn(text, realName, themeColor)
     end)
 end
 
-CreateStylishCharBtn("MARK", "Mark", Color3.fromRGB(255, 235, 59))                   -- Vàng
-CreateStylishCharBtn("ELECTRICITY GUY", "PowerPlex", Color3.fromRGB(255, 110, 110))        -- Internal Name: PowerPlex
-CreateStylishCharBtn("TECH SUIT", "TechSuit", Color3.fromRGB(64, 224, 208))           -- Turquoise
-CreateStylishCharBtn("BIG BRAIN", "BigBrain", Color3.fromRGB(50, 255, 50))            -- Green
-CreateStylishCharBtn("ATOM MISTRESS", "AtomMistress", Color3.fromRGB(255, 150, 200)) -- Pink
+CreateStylishCharBtn("Mark", "Mark", Color3.fromRGB(255, 235, 59))                   -- Vàng
+CreateStylishCharBtn("Electricity Guy", "PowerPlex", Color3.fromRGB(255, 110, 110))        -- Internal Name: PowerPlex
+CreateStylishCharBtn("Tech Suit", "TechSuit", Color3.fromRGB(64, 224, 208))           -- Turquoise
+CreateStylishCharBtn("Big Brain", "BigBrain", Color3.fromRGB(50, 255, 50))            -- Green
+CreateStylishCharBtn("Atom Mistress", "AtomMistress", Color3.fromRGB(255, 150, 200)) -- Pink
 
 -- [[ CLEANUP ]] --
 local function FullCleanup()
@@ -1274,7 +1274,7 @@ end)
 
 -- Notify
 game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "GUI",
+    Title = "Gui",
     Text = "Loaded! Press LeftControl to Toggle.",
     Duration = 3
 })

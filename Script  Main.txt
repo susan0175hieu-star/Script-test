@@ -395,8 +395,8 @@ local function CreateCombatSlider(name, min, max, init, callback)
     -- Label (Auto Sized)
     local label = Create("TextLabel", {
         Text = name .. ":",
-        Size = UDim2.new(0, 0, 1, 0), -- Width auto, Height fill
-        AutomaticSize = Enum.AutomaticSize.X,
+        Size = UDim2.new(0, 120, 1, 0), -- Fixed Width for alignment
+        -- AutomaticSize = Enum.AutomaticSize.X,
         BackgroundTransparency = 1,
         TextColor3 = COLORS.TEXT,
         Font = Enum.Font.GothamBold,
@@ -425,10 +425,12 @@ local function CreateCombatSlider(name, min, max, init, callback)
         local num = tonumber(inputBox.Text)
         if num then
             num = math.clamp(num, min, max)
+            inputBox.Text = tostring(num) -- VISUAL UPDATE
             callback(num)
         else
-             inputBox.Text = tostring(math.clamp(tonumber(inputBox.Text) or min, min, max))
-             callback(tonumber(inputBox.Text))
+             local default = min
+             inputBox.Text = tostring(default)
+             callback(default)
         end
     end)
 end
@@ -467,7 +469,7 @@ CreateCombatSlider("AOE Radius", 10, 100, 50, function(val)
     KillRadius = val
 end)
 
-CreateCombatSlider("Attack Delay (ms)", 10, 500, 50, function(val)
+CreateCombatSlider("Attack Delay (ms)", 10, 50, 50, function(val)
     AttackDelay = val / 1000
 end)
 
@@ -794,10 +796,31 @@ local SafetyPadding = Create("UIPadding", {
 })
 
 -- Padding for Top Offset
+-- Padding for Top Offset
 local SpeedPadding = Create("UIPadding", {
     PaddingTop = UDim.new(0, 15), -- Move everything down by 15px
     Parent = SpeedSection
 })
+
+-- Init Speeds
+local minSpeed = 16
+local maxSpeed = 800
+local CurrentWalkSpeed = 24
+local CurrentFlySpeed = 24
+local WalkSpeedEnabled = false -- Toggle State
+
+local function GetCharSpeed()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        return math.max(LocalPlayer.Character.Humanoid.WalkSpeed, 24)
+    end
+    return 24
+end
+CurrentWalkSpeed = GetCharSpeed()
+CurrentFlySpeed = CurrentWalkSpeed 
+
+-- Callback Wrappers
+local function SetWalkSpeed(val) CurrentWalkSpeed = val end
+local function SetFlySpeed(val) CurrentFlySpeed = val end
 
 -- Helper: Create Slider
 -- Helper: Create Slider (Input Only)
@@ -865,36 +888,18 @@ local function CreateSlider(name, layoutOrder, initValue, callback)
         local num = tonumber(InputBox.Text)
         if num then
             num = math.clamp(num, minSpeed, maxSpeed)
+            InputBox.Text = tostring(num) -- VISUAL UPDATE
             callback(num)
         else
             -- Reset
-             InputBox.Text = tostring(math.clamp(tonumber(InputBox.Text) or minSpeed, minSpeed, maxSpeed))
-             callback(tonumber(InputBox.Text))
+             local default = minSpeed
+             InputBox.Text = tostring(default)
+             callback(default)
         end
     end)
     
     return inner, InputBox
 end
-
--- Init Speeds
-local minSpeed = 16
-local maxSpeed = 800
-local CurrentWalkSpeed = 24
-local CurrentFlySpeed = 24
-local WalkSpeedEnabled = false -- Toggle State
-
-local function GetCharSpeed()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        return math.max(LocalPlayer.Character.Humanoid.WalkSpeed, 24)
-    end
-    return 24
-end
-CurrentWalkSpeed = GetCharSpeed()
-CurrentFlySpeed = CurrentWalkSpeed 
-
--- Callback Wrappers
-local function SetWalkSpeed(val) CurrentWalkSpeed = val end
-local function SetFlySpeed(val) CurrentFlySpeed = val end
 
 local WalkInner, WalkInput = CreateSlider("WalkSpeed", 1, CurrentWalkSpeed, SetWalkSpeed)
 local FlyInner, FlyInput = CreateSlider("FlySpeed", 2, CurrentFlySpeed, SetFlySpeed)
@@ -971,51 +976,7 @@ local function UpdateFlyToggle()
     TweenService:Create(FlyToggleStroke, TweenInfo.new(0.2), {Color = strokeColor}):Play()
 end
 
-Bind(FlyToggleBtn.MouseButton1Click, function()
-    IsFlying = not IsFlying
-    UpdateFlyToggle()
-    
-    if IsFlying then
-        -- Fly Logic
-         task.spawn(function()
-            local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            local Camera = workspace.CurrentCamera
-            if not Root then return end
-            
-            local BV = Instance.new("BodyVelocity")
-            BV.Velocity = Vector3.zero
-            BV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            BV.Parent = Root
-            
-            local BG = Instance.new("BodyGyro")
-            BG.P = 9e4
-            BG.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-            BG.CFrame = Root.CFrame
-            BG.Parent = Root
-            
-            while IsFlying and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") do
-                local camLook = Camera.CFrame.LookVector
-                local moveDir = Vector3.zero
-                
-                -- Simple Fly Controls (WASD)
-                local UIS = game:GetService("UserInputService")
-                if UIS:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + camLook end
-                if UIS:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camLook end
-                if UIS:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - Camera.CFrame.RightVector end
-                if UIS:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + Camera.CFrame.RightVector end
-                if UIS:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
-                if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0, 1, 0) end
-                
-                BV.Velocity = moveDir * CurrentFlySpeed
-                BG.CFrame = Camera.CFrame
-                task.wait()
-            end
-            BV:Destroy()
-            BG:Destroy()
-        end)
-    end
-end)
-UpdateFlyToggle()
+
 
 -- HELPER: Create Toggle Row (No Input)
 local function CreateToggleRow(name, layoutOrder, parent, callback)
@@ -1104,16 +1065,40 @@ local function CreateToggleRow(name, layoutOrder, parent, callback)
 end
 
 -- Create No Ragdoll/Stun Toggles
-CreateToggleRow("No Ragdoll", 1, SafetySection, function(val) NoRagdollEnabled = val end)
-CreateToggleRow("No Stun", 2, SafetySection, function(val) NoStunEnabled = val end)
+CreateToggleRow("No Ragdoll", 1, SafetySection, function(val) 
+    NoRagdollEnabled = val 
+    if not val and LocalPlayer.Character then
+        local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+        if hum then
+            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+        end
+    end
+end)
+
+CreateToggleRow("No Stun", 2, SafetySection, function(val) 
+    NoStunEnabled = val 
+    if not val and LocalPlayer.Character then
+        local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+        if hum then
+            hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, true)
+            hum.PlatformStand = false
+        end
+    end
+end)
 
 
+-- Consolidated Fly Toggle Logic (Use RenderStepped below)
 Bind(FlyToggleBtn.MouseButton1Click, function()
     IsFlying = not IsFlying
     UpdateFlyToggle()
     
     if not IsFlying and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.PlatformStand = false
+        -- Reset Velocity
+        if LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+             LocalPlayer.Character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+        end
     end
 end)
 UpdateFlyToggle()
@@ -1122,7 +1107,7 @@ UpdateFlyToggle()
 -- IsFlying variable handled above with the toggle
 -- Old UI removed
 
--- OPTIMIZED SPEED & FLY LOOP (RenderStepped)
+-- OPTIMIZED SPEED & FLY LOOP (Heartbeat)
 Bind(RunService.RenderStepped, function()
     local Char = LocalPlayer.Character
     local Hum = Char and Char:FindFirstChild("Humanoid")
@@ -1139,33 +1124,11 @@ Bind(RunService.RenderStepped, function()
             Hum.PlatformStand = true -- Disable physics/animations
             local Cam = workspace.CurrentCamera
             if Cam then
-                -- Fly velocity = Move Direction * Speed (WASD Control)
-                -- If no input, MoveDirection is (0,0,0), effectively hovering
-                Root.AssemblyLinearVelocity = Hum.MoveDirection * CurrentFlySpeed
-                
-                -- Optional: Add Vertical movement with Space/Ctrl if needed, 
-                -- but MoveDirection covers standard horizontal plane movement nicely.
-                -- For full 3D fly (moving UP where looking), we might need camera vectors, 
-                -- but user asked for "Game Mechanism" which usually implies standard movement.
-                -- If they want to fly UP by looking UP + W:
-                if Hum.MoveDirection.Magnitude > 0 then
-                    -- Root.AssemblyLinearVelocity =  Cam.CFrame.LookVector * CurrentFlySpeed -- Flying in look direction when W pressed (Simpler "Superman" style)
-                    -- OR standard free fly:
-                    -- Root.AssemblyLinearVelocity = Hum.MoveDirection * CurrentFlySpeed 
-                else
-                     Root.AssemblyLinearVelocity = Vector3.zero
-                end
-                
-                -- LET'S STICK TO THE REQUEST: "Game Mechanism"
-                -- Standard Roblox fly scripts usually do:
-                -- Vector3 based on Camera LookVector for W/S and RightVector for A/D.
-                
                 local moveDir = Vector3.zero
                 local look = Cam.CFrame.LookVector
                 local right = Cam.CFrame.RightVector
                 
-                -- We construct a pure directional vector based on keys
-                -- (Since Hum.MoveDirection relies on internal controller which might be wonky in PlatformStand)
+                -- Manual Movement Keys (Works in PlatformStand)
                 local forward = 0
                 local side = 0
                 
@@ -1177,20 +1140,31 @@ Bind(RunService.RenderStepped, function()
                 if forward ~= 0 or side ~= 0 then
                     moveDir = (look * forward) + (right * side)
                     if moveDir.Magnitude > 0 then
-                         local activeSpeed = CurrentFlySpeed
-                         -- Removed Q hold requirement as requested
-                         
-                         moveDir = moveDir.Unit * activeSpeed
+                        Root.AssemblyLinearVelocity = moveDir.Unit * CurrentFlySpeed
                     end
+                else
+                    -- Stop if no keys pressed
+                    Root.AssemblyLinearVelocity = Vector3.zero 
                 end
                 
-                Root.AssemblyLinearVelocity = moveDir
+                -- Optional Vertical Fly
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then 
+                    Root.AssemblyLinearVelocity = Root.AssemblyLinearVelocity + Vector3.new(0, CurrentFlySpeed, 0)
+                end
+
+                
+                -- STABILIZE ROTATION (Prevent Spinning)
                 Root.AssemblyAngularVelocity = Vector3.zero
             end
-        elseif not IsFlying and Hum.PlatformStand then
-             -- Just a safety check to ensure we land if we toggled off mid-air
-             Hum.PlatformStand = false
+        else
+             -- Ensure PlatformStand is disabled if not flying (Safety Check)
+             if Hum.PlatformStand and not NoStunEnabled then
+                 Hum.PlatformStand = false
+                 Root.AssemblyAngularVelocity = Vector3.zero -- Stop spinning on land
+             end
         end
+
+
     end
 end)
 

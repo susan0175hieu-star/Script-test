@@ -782,6 +782,7 @@ local minSpeed = 16
 local maxSpeed = 300
 local CurrentWalkSpeed = 24
 local CurrentFlySpeed = 24
+local WalkSpeedEnabled = false -- Toggle State
 
 local function GetCharSpeed()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -809,6 +810,95 @@ local FlyBar, FlyFill, FlyInput = CreateSlider("Boost Speed (Hold Q)", 55, Curre
 -- Initial Visual Update
 UpdateSliderVisual(WalkFill, WalkInput, CurrentWalkSpeed)
 UpdateSliderVisual(FlyFill, FlyInput, CurrentFlySpeed)
+
+-- Create Toggle for WalkSpeed (Small switch next to label or separate)
+-- Let's put it to the right of the "WalkSpeed" slider area, or integrate it.
+-- Actually, let's create a dedicated Toggle Button next to the slider or modify the slider label.
+-- Simpler approach: Create a small toggle button overlay or adjacent.
+-- Let's create a nice Toggle Switch at the top right of the WalkSpeed slider frame, or just below it?
+-- The space is tight. Let's add a "Enable" checkbox/toggle inside the WalkSpeed slider area.
+
+local WalkToggleBtn = Create("TextButton", {
+    Text = "",
+    Size = UDim2.new(0, 40, 0, 20),
+    Position = UDim2.new(1, -95, 0, 2), -- Left of the InputBox (which is at 1, -45) -> InputBox size 40. Gap 10?
+    -- InputBox is at 1, -45. Size 40. So it occupies -45 to -5.
+    -- Let's put toggle at 1, -95 (so -95 to -55). 
+    BackgroundColor3 = COLORS.BUTTON,
+    Parent = WalkBar.Parent -- Parent to the slider section frame
+})
+CreateCorner(10, WalkToggleBtn)
+local WalkToggleStroke = CreateStroke(1, Color3.fromRGB(80, 80, 80), WalkToggleBtn)
+
+local WalkToggleKnob = Create("Frame", {
+    Size = UDim2.new(0, 16, 0, 16),
+    Position = UDim2.new(0, 2, 0.5, -8),
+    BackgroundColor3 = Color3.fromRGB(200, 200, 200),
+    Parent = WalkToggleBtn
+})
+CreateCorner(8, WalkToggleKnob)
+
+local function UpdateWalkToggle()
+    local targetPos = WalkSpeedEnabled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    local targetColor = WalkSpeedEnabled and COLORS.SELECTED or COLORS.BUTTON
+    local strokeColor = WalkSpeedEnabled and Color3.new(1, 1, 1) or Color3.fromRGB(80, 80, 80)
+    
+    TweenService:Create(WalkToggleKnob, TweenInfo.new(0.2), {Position = targetPos}):Play()
+    TweenService:Create(WalkToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
+    TweenService:Create(WalkToggleStroke, TweenInfo.new(0.2), {Color = strokeColor}):Play()
+end
+
+Bind(WalkToggleBtn.MouseButton1Click, function()
+    WalkSpeedEnabled = not WalkSpeedEnabled
+    UpdateWalkToggle()
+    
+    -- Restore speed if disabled
+    if not WalkSpeedEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = 16 -- Default or previous? 16 is safe default.
+    end
+end)
+UpdateWalkToggle()
+
+-- Fly Toggle
+local IsFlying = false -- logic state
+
+local FlyToggleBtn = Create("TextButton", {
+    Text = "",
+    Size = UDim2.new(0, 40, 0, 20),
+    Position = UDim2.new(1, -95, 0, 2), 
+    BackgroundColor3 = COLORS.BUTTON,
+    Parent = FlyBar.Parent
+})
+CreateCorner(10, FlyToggleBtn)
+local FlyToggleStroke = CreateStroke(1, Color3.fromRGB(80, 80, 80), FlyToggleBtn)
+
+local FlyToggleKnob = Create("Frame", {
+    Size = UDim2.new(0, 16, 0, 16),
+    Position = UDim2.new(0, 2, 0.5, -8),
+    BackgroundColor3 = Color3.fromRGB(200, 200, 200),
+    Parent = FlyToggleBtn
+})
+CreateCorner(8, FlyToggleKnob)
+
+local function UpdateFlyToggle()
+    local targetPos = IsFlying and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    local targetColor = IsFlying and COLORS.SELECTED or COLORS.BUTTON
+    local strokeColor = IsFlying and Color3.new(1, 1, 1) or Color3.fromRGB(80, 80, 80)
+    
+    TweenService:Create(FlyToggleKnob, TweenInfo.new(0.2), {Position = targetPos}):Play()
+    TweenService:Create(FlyToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
+    TweenService:Create(FlyToggleStroke, TweenInfo.new(0.2), {Color = strokeColor}):Play()
+end
+
+Bind(FlyToggleBtn.MouseButton1Click, function()
+    IsFlying = not IsFlying
+    UpdateFlyToggle()
+    
+    if not IsFlying and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.PlatformStand = false
+    end
+end)
+UpdateFlyToggle()
 
 local DraggingWalk, DraggingFly = false, false
 
@@ -861,44 +951,8 @@ Bind(UserInputService.InputChanged, function(input)
 end)
 
 -- [[ LOGIC: FLY SYSTEM ]] --
-local IsFlying = false
-local FlyBtn = Create("TextButton", {
-    Text = "FLY SYSTEM",
-    Size = UDim2.new(0.32, 0, 0, 65),
-    Position = UDim2.new(0.66, 0, 0.5, -32),
-    BackgroundColor3 = COLORS.BUTTON,
-    TextColor3 = COLORS.TEXT,
-    Font = Enum.Font.GothamBold,
-    TextSize = 18,
-    Parent = BottomPanel
-})
-CreateCorner(8, FlyBtn)
-local flyStroke = CreateStroke(2, Color3.fromRGB(70, 70, 75), FlyBtn)
-local flyStatus = Create("TextLabel", {
-    Text = "STATUS: OFF",
-    Size = UDim2.new(1, 0, 0, 20),
-    Position = UDim2.new(0, 0, 1, -25),
-    BackgroundTransparency = 1,
-    TextColor3 = Color3.fromRGB(150, 150, 150),
-    Font = Enum.Font.GothamBold,
-    TextSize = 12,
-    Parent = FlyBtn
-})
-
-Bind(FlyBtn.MouseButton1Click, function()
-    IsFlying = not IsFlying
-    local targetColor = IsFlying and COLORS.SELECTED or COLORS.BUTTON
-    local strokeColor = IsFlying and Color3.new(1, 1, 1) or Color3.fromRGB(70, 70, 75)
-    
-    TweenService:Create(FlyBtn, TweenInfo.new(0.3), {BackgroundColor3 = targetColor}):Play()
-    TweenService:Create(flyStroke, TweenInfo.new(0.3), {Color = strokeColor, Transparency = IsFlying and 0.5 or 0}):Play()
-    flyStatus.Text = "STATUS: " .. (IsFlying and "ON (Hold Q)" or "OFF")
-    flyStatus.TextColor3 = IsFlying and Color3.new(1, 1, 1) or Color3.fromRGB(150, 150, 150)
-    
-    if not IsFlying and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.PlatformStand = false
-    end
-end)
+-- IsFlying variable handled above with the toggle
+-- Old UI removed
 
 -- OPTIMIZED SPEED & FLY LOOP (RenderStepped)
 Bind(RunService.RenderStepped, function()
@@ -908,7 +962,9 @@ Bind(RunService.RenderStepped, function()
     
     if Char and Hum and Root and Hum.Health > 0 then
         -- 1. Apply WalkSpeed
-        Hum.WalkSpeed = CurrentWalkSpeed
+        if WalkSpeedEnabled then
+            Hum.WalkSpeed = CurrentWalkSpeed
+        end
         
         -- 2. Apply Fly
         if IsFlying then

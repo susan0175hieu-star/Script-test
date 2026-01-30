@@ -150,6 +150,22 @@ local ResetBtn = Create("TextButton", {
     Parent = TopBar
 })
 
+-- Rejoin Button (Small)
+local RejoinIconBtn = Create("TextButton", {
+    Text = "Rejoin Server",
+    Size = UDim2.new(0, 110, 1, 0),
+    Position = UDim2.new(1, -230, 0, 0), -- Shifted to fit text
+    BackgroundTransparency = 1,
+    TextColor3 = Color3.fromRGB(40, 150, 255),
+    Font = Enum.Font.GothamBold,
+    TextSize = 14, -- Smaller text for full name
+    Parent = TopBar
+})
+
+Bind(RejoinIconBtn.MouseButton1Click, function()
+    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+end)
+
 Bind(ResetBtn.MouseButton1Click, function()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.Health = 0
@@ -1086,6 +1102,8 @@ CreateToggleRow("No Stun", 2, SafetySection, function(val)
         end
     end
 end)
+
+
 
 
 -- Consolidated Fly Toggle Logic (Use RenderStepped below)

@@ -652,8 +652,10 @@ Bind(RunService.Stepped, function()
     
     if Hum then Hum.PlatformStand = true end
     
-    BodyVelocity.Parent = Root
-    BodyAngularVelocity.Parent = Root
+    pcall(function()
+        BodyVelocity.Parent = Root
+        BodyAngularVelocity.Parent = Root
+    end)
     
     local targetRoot = FlingTarget.Character.HumanoidRootPart
     

@@ -805,7 +805,7 @@ local function SetWalkSpeed(val) CurrentWalkSpeed = val end
 local function SetFlySpeed(val) CurrentFlySpeed = val end
 
 local WalkBar, WalkFill, WalkInput = CreateSlider("WalkSpeed", 5, CurrentWalkSpeed, SetWalkSpeed)
-local FlyBar, FlyFill, FlyInput = CreateSlider("Boost Speed (Hold Q)", 55, CurrentFlySpeed, SetFlySpeed)
+local FlyBar, FlyFill, FlyInput = CreateSlider("FlySpeed", 55, CurrentFlySpeed, SetFlySpeed)
 
 -- Initial Visual Update
 UpdateSliderVisual(WalkFill, WalkInput, CurrentWalkSpeed)

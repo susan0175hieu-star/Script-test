@@ -376,86 +376,59 @@ local function CreateCombatSlider(name, min, max, init, callback)
     })
     CreateCorner(2, dot)
     
-    -- Label (Split from value)
+    -- Inner Content Frame (for Auto Layout)
+    local inner = Create("Frame", {
+        Size = UDim2.new(1, -15, 0, 20), -- Height matches input/label
+        Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        Parent = frame
+    })
+    
+    local layout = Create("UIListLayout", {
+        Padding = UDim.new(0, 10),
+        FillDirection = Enum.FillDirection.Horizontal,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        VerticalAlignment = Enum.VerticalAlignment.Center,
+        Parent = inner
+    })
+    
+    -- Label (Auto Sized)
     local label = Create("TextLabel", {
         Text = name .. ":",
-        Size = UDim2.new(1, -70, 0, 20),
-        Position = UDim2.new(0, 10, 0, 0),
+        Size = UDim2.new(0, 0, 1, 0), -- Width auto, Height fill
+        AutomaticSize = Enum.AutomaticSize.X,
         BackgroundTransparency = 1,
         TextColor3 = COLORS.TEXT,
         Font = Enum.Font.GothamBold,
         TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Left,
-        Parent = frame
+        LayoutOrder = 1,
+        Parent = inner
     })
     
-    -- Input Box (New)
+    -- Input Box (Flows after label)
     local inputBox = Create("TextBox", {
         Text = tostring(init),
-        Size = UDim2.new(0, 50, 0, 20),
-        Position = UDim2.new(1, -55, 0, 0),
-        BackgroundColor3 = Color3.fromRGB(20, 20, 25), -- Slightly darker for input field
+        Size = UDim2.new(0, 50, 1, 0),
+        BackgroundColor3 = Color3.fromRGB(20, 20, 25),
         TextColor3 = COLORS.SELECTED,
         Font = Enum.Font.GothamBold,
         TextSize = 13,
-        Parent = frame
+        LayoutOrder = 2,
+        Parent = inner
     })
     CreateCorner(4, inputBox)
     local inputStroke = CreateStroke(1, Color3.fromRGB(60, 60, 65), inputBox)
     
-    local bar = Create("Frame", {
-        Size = UDim2.new(1, 0, 0, 6),
-        Position = UDim2.new(0, 0, 1, -10),
-        BackgroundColor3 = COLORS.BUTTON,
-        BorderSizePixel = 0,
-        Parent = frame
-    })
-    CreateCorner(3, bar)
-    
-    local fill = Create("Frame", {
-        Size = UDim2.new((init - min) / (max - min), 0, 1, 0),
-        BackgroundColor3 = COLORS.SELECTED,
-        BorderSizePixel = 0,
-        Parent = bar
-    })
-    CreateCorner(3, fill)
-    
-    local dragging = false
-    local function Update(val)
-        local pct = math.clamp((val - min) / (max - min), 0, 1)
-        fill.Size = UDim2.new(pct, 0, 1, 0)
-        inputBox.Text = tostring(val)
-    end
-    
-    -- Sync Input Box -> Slider
+    -- Sync Input Box
     Bind(inputBox.FocusLost, function(enter)
         local num = tonumber(inputBox.Text)
         if num then
             num = math.clamp(num, min, max)
-            Update(num)
             callback(num)
         else
-            -- Reset if invalid
-            local currentPct = fill.Size.X.Scale
-            local currentVal = math.floor(min + (currentPct * (max - min)))
-            inputBox.Text = tostring(currentVal)
-        end
-    end)
-    
-    -- Sync Slider -> Input Box
-    Bind(bar.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end
-    end)
-    Bind(UserInputService.InputEnded, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-    end)
-    Bind(UserInputService.InputChanged, function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local relativeX = input.Position.X - bar.AbsolutePosition.X
-            local pct = math.clamp(relativeX / bar.AbsoluteSize.X, 0, 1)
-            local newVal = math.floor(min + (pct * (max - min)))
-            Update(newVal)
-            callback(newVal)
+             inputBox.Text = tostring(math.clamp(tonumber(inputBox.Text) or min, min, max))
+             callback(tonumber(inputBox.Text))
         end
     end)
 end
@@ -714,6 +687,7 @@ local SpeedSection = Create("Frame", {
 })
 
 -- Helper: Create Slider
+-- Helper: Create Slider (Input Only)
 local function CreateSlider(name, relativeY, initValue, callback)
     local section = Create("Frame", {
         Size = UDim2.new(1, 0, 0, 45),
@@ -730,51 +704,63 @@ local function CreateSlider(name, relativeY, initValue, callback)
     })
     CreateCorner(2, dot)
     
+    -- Inner Content Frame (for Auto Layout)
+    local inner = Create("Frame", {
+        Size = UDim2.new(1, -15, 0, 20), -- Height matches input/label
+        Position = UDim2.new(0, 10, 0, 2),
+        BackgroundTransparency = 1,
+        Parent = section
+    })
+    
+    local layout = Create("UIListLayout", {
+        Padding = UDim.new(0, 10),
+        FillDirection = Enum.FillDirection.Horizontal,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        VerticalAlignment = Enum.VerticalAlignment.Center,
+        Parent = inner
+    })
+    
     local Label = Create("TextLabel", {
         Text = name,
-        Size = UDim2.new(1, -70, 0, 20),
-        Position = UDim2.new(0, 10, 0, 2),
+        Size = UDim2.new(0, 0, 1, 0),
+        AutomaticSize = Enum.AutomaticSize.X,
         BackgroundTransparency = 1,
         TextColor3 = COLORS.TEXT,
         TextXAlignment = Enum.TextXAlignment.Left,
         Font = Enum.Font.GothamBold,
         TextSize = 13,
-        Parent = section
+        LayoutOrder = 1,
+        Parent = inner
     })
     
-    -- INPUT BOX (Replaces old ValueLabel)
+    -- INPUT BOX
     local InputBox = Create("TextBox", {
         Text = tostring(initValue),
-        Size = UDim2.new(0, 40, 0, 18),
-        Position = UDim2.new(1, -45, 0, 2),
+        Size = UDim2.new(0, 40, 1, 0),
         BackgroundColor3 = Color3.fromRGB(20, 20, 25),
         TextColor3 = COLORS.SELECTED,
         Font = Enum.Font.GothamBold,
         TextSize = 13,
-        Parent = section
+        LayoutOrder = 3, -- After Label (1) and Toggle (2)
+        Parent = inner
     })
     CreateCorner(4, InputBox)
     local inputStroke = CreateStroke(1, Color3.fromRGB(60, 60, 65), InputBox)
     
-    local Bar = Create("TextButton", {
-        Text = "",
-        Size = UDim2.new(1, 0, 0, 6),
-        Position = UDim2.new(0, 0, 1, -10),
-        BackgroundColor3 = COLORS.SLIDER_BG,
-        AutoButtonColor = false,
-        Parent = section
-    })
-    CreateCorner(3, Bar)
+    -- Input Logic
+    Bind(InputBox.FocusLost, function(enter)
+        local num = tonumber(InputBox.Text)
+        if num then
+            num = math.clamp(num, minSpeed, maxSpeed)
+            callback(num)
+        else
+            -- Reset
+             InputBox.Text = tostring(math.clamp(tonumber(InputBox.Text) or minSpeed, minSpeed, maxSpeed))
+             callback(tonumber(InputBox.Text))
+        end
+    end)
     
-    local Fill = Create("Frame", {
-        Size = UDim2.new(0, 0, 1, 0),
-        BackgroundColor3 = COLORS.SELECTED,
-        BorderSizePixel = 0,
-        Parent = Bar
-    })
-    CreateCorner(3, Fill)
-    
-    return Bar, Fill, InputBox
+    return inner, InputBox
 end
 
 -- Init Speeds
@@ -793,39 +779,21 @@ end
 CurrentWalkSpeed = GetCharSpeed()
 CurrentFlySpeed = CurrentWalkSpeed 
 
--- Forward declaration needed for callbacks
-local function UpdateSliderVisual(fill, inputBox, val)
-    local percent = math.clamp((val - minSpeed) / (maxSpeed - minSpeed), 0, 1)
-    fill.Size = UDim2.new(percent, 0, 1, 0)
-    inputBox.Text = tostring(val)
-end
-
 -- Callback Wrappers
 local function SetWalkSpeed(val) CurrentWalkSpeed = val end
 local function SetFlySpeed(val) CurrentFlySpeed = val end
 
-local WalkBar, WalkFill, WalkInput = CreateSlider("WalkSpeed", 5, CurrentWalkSpeed, SetWalkSpeed)
-local FlyBar, FlyFill, FlyInput = CreateSlider("FlySpeed", 55, CurrentFlySpeed, SetFlySpeed)
+local WalkInner, WalkInput = CreateSlider("WalkSpeed", 5, CurrentWalkSpeed, SetWalkSpeed)
+local FlyInner, FlyInput = CreateSlider("FlySpeed", 55, CurrentFlySpeed, SetFlySpeed)
 
--- Initial Visual Update
-UpdateSliderVisual(WalkFill, WalkInput, CurrentWalkSpeed)
-UpdateSliderVisual(FlyFill, FlyInput, CurrentFlySpeed)
-
--- Create Toggle for WalkSpeed (Small switch next to label or separate)
--- Let's put it to the right of the "WalkSpeed" slider area, or integrate it.
--- Actually, let's create a dedicated Toggle Button next to the slider or modify the slider label.
--- Simpler approach: Create a small toggle button overlay or adjacent.
--- Let's create a nice Toggle Switch at the top right of the WalkSpeed slider frame, or just below it?
--- The space is tight. Let's add a "Enable" checkbox/toggle inside the WalkSpeed slider area.
-
+-- Toggle Buttons
+-- Walk Toggle
 local WalkToggleBtn = Create("TextButton", {
     Text = "",
-    Size = UDim2.new(0, 40, 0, 20),
-    Position = UDim2.new(1, -95, 0, 2), -- Left of the InputBox (which is at 1, -45) -> InputBox size 40. Gap 10?
-    -- InputBox is at 1, -45. Size 40. So it occupies -45 to -5.
-    -- Let's put toggle at 1, -95 (so -95 to -55). 
+    Size = UDim2.new(0, 40, 1, 0),
     BackgroundColor3 = COLORS.BUTTON,
-    Parent = WalkBar.Parent -- Parent to the slider section frame
+    LayoutOrder = 2, -- Between Label (1) and Input (3)
+    Parent = WalkInner
 })
 CreateCorner(10, WalkToggleBtn)
 local WalkToggleStroke = CreateStroke(1, Color3.fromRGB(80, 80, 80), WalkToggleBtn)
@@ -854,20 +822,20 @@ Bind(WalkToggleBtn.MouseButton1Click, function()
     
     -- Restore speed if disabled
     if not WalkSpeedEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.WalkSpeed = 16 -- Default or previous? 16 is safe default.
+        LocalPlayer.Character.Humanoid.WalkSpeed = 16 
     end
 end)
 UpdateWalkToggle()
 
 -- Fly Toggle
-local IsFlying = false -- logic state
+local IsFlying = false 
 
 local FlyToggleBtn = Create("TextButton", {
     Text = "",
-    Size = UDim2.new(0, 40, 0, 20),
-    Position = UDim2.new(1, -95, 0, 2), 
+    Size = UDim2.new(0, 40, 1, 0),
     BackgroundColor3 = COLORS.BUTTON,
-    Parent = FlyBar.Parent
+    LayoutOrder = 2,
+    Parent = FlyInner
 })
 CreateCorner(10, FlyToggleBtn)
 local FlyToggleStroke = CreateStroke(1, Color3.fromRGB(80, 80, 80), FlyToggleBtn)
@@ -899,56 +867,6 @@ Bind(FlyToggleBtn.MouseButton1Click, function()
     end
 end)
 UpdateFlyToggle()
-
-local DraggingWalk, DraggingFly = false, false
-
-local function HandleSliderInput(input, bar, fill, inputBox, type)
-    local relativeX = input.Position.X - bar.AbsolutePosition.X
-    local percent = math.clamp(relativeX / bar.AbsoluteSize.X, 0, 1)
-    local newSpeed = math.floor(minSpeed + (percent * (maxSpeed - minSpeed)))
-    
-    UpdateSliderVisual(fill, inputBox, newSpeed)
-    
-    if type == "Walk" then CurrentWalkSpeed = newSpeed
-    elseif type == "Fly" then CurrentFlySpeed = newSpeed end
-end
-
--- Sync InputBox changes manually
-local function SetupInputSync(inputBox, bar, fill, typeStr)
-    Bind(inputBox.FocusLost, function(enter)
-        local num = tonumber(inputBox.Text)
-        if num then
-            num = math.clamp(num, minSpeed, maxSpeed)
-            UpdateSliderVisual(fill, inputBox, num)
-            if typeStr == "Walk" then CurrentWalkSpeed = num
-            elseif typeStr == "Fly" then CurrentFlySpeed = num end
-        else
-            -- Reset
-            local currentVal = (typeStr == "Walk") and CurrentWalkSpeed or CurrentFlySpeed
-            inputBox.Text = tostring(currentVal)
-        end
-    end)
-end
-
-SetupInputSync(WalkInput, WalkBar, WalkFill, "Walk")
-SetupInputSync(FlyInput, FlyBar, FlyFill, "Fly")
-
-Bind(WalkBar.MouseButton1Down, function() DraggingWalk = true end)
-Bind(FlyBar.MouseButton1Down, function() DraggingFly = true end)
-
-Bind(UserInputService.InputEnded, function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then 
-        DraggingWalk = false 
-        DraggingFly = false
-    end
-end)
-
-Bind(UserInputService.InputChanged, function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        if DraggingWalk then HandleSliderInput(input, WalkBar, WalkFill, WalkInput, "Walk") end
-        if DraggingFly then HandleSliderInput(input, FlyBar, FlyFill, FlyInput, "Fly") end
-    end
-end)
 
 -- [[ LOGIC: FLY SYSTEM ]] --
 -- IsFlying variable handled above with the toggle

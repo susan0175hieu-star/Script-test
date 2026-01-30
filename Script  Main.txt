@@ -510,6 +510,74 @@ CreateCombatToggle("Fling", function(toggle)
     return FlingEnabled
 end, Color3.fromRGB(255, 50, 50))
 
+local NoRagdollEnabled = false
+-- Toggle moved to Speed Section
+
+local NoStunEnabled = false
+-- Toggle moved to Speed Section
+
+-- Loop for No Ragdoll and No Stun
+RunService.Stepped:Connect(function()
+    if not LocalPlayer.Character then return end
+    local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+    if not hum then return end
+
+    if NoRagdollEnabled then
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        
+        -- Remove Ragdoll Attributes
+        if LocalPlayer.Character:GetAttribute("Ragdoll") then LocalPlayer.Character:SetAttribute("Ragdoll", nil) end
+        if LocalPlayer.Character:GetAttribute("Ragdolled") then LocalPlayer.Character:SetAttribute("Ragdolled", nil) end
+        if LocalPlayer.Character:GetAttribute("Knocked") then LocalPlayer.Character:SetAttribute("Knocked", nil) end
+        
+        -- Remove Ragdoll Objects
+        for _, name in ipairs({"Ragdoll", "Ragdolled", "Knock", "Knocked", "RealRagdoll", "RagdollConstraints"}) do
+             local obj = LocalPlayer.Character:FindFirstChild(name)
+             if obj then obj:Destroy() end
+        end
+    end
+    
+    if NoStunEnabled then
+        hum.PlatformStand = false
+        hum.Sit = false
+        hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+        
+        -- Remove Stun Attributes
+        if LocalPlayer.Character:GetAttribute("Stunned") then LocalPlayer.Character:SetAttribute("Stunned", nil) end
+        if LocalPlayer.Character:GetAttribute("Stun") then LocalPlayer.Character:SetAttribute("Stun", nil) end
+        
+        -- Remove Stun Objects
+        for _, name in ipairs({"Stun", "Stunned", "StunVar", "Action", "Freeze", "Slow"}) do
+             local obj = LocalPlayer.Character:FindFirstChild(name)
+             if obj then obj:Destroy() end
+        end
+    end
+end)
+
+-- Instant Stun/Ragdoll Removal (ChildAdded)
+local function SetupChildAdded(char)
+    if not char then return end
+    char.ChildAdded:Connect(function(child)
+        if NoStunEnabled then
+            if table.find({"Stun", "Stunned", "StunVar", "Action", "Freeze", "Slow"}, child.Name) then
+                task.wait() 
+                child:Destroy()
+            end
+        end
+        
+        if NoRagdollEnabled then
+            if table.find({"Ragdoll", "Ragdolled", "Knock", "Knocked", "RealRagdoll", "RagdollConstraints"}, child.Name) then
+                task.wait() 
+                child:Destroy()
+            end
+        end
+    end)
+end
+
+LocalPlayer.CharacterAdded:Connect(SetupChildAdded)
+SetupChildAdded(LocalPlayer.Character)
+
 
 -- [[ FLING LOGIC ]] --
 local BodyVelocity = Instance.new("BodyVelocity")
@@ -679,9 +747,18 @@ CreateCorner(6, BottomPanel)
 
 -- Speed Slider Section (Left Side of Bottom Panel)
 -- Speed Slider Section (Left Side of Bottom Panel)
+-- Speed Slider Section (Left Side of Bottom Panel)
 local SpeedSection = Create("Frame", {
-    Size = UDim2.new(0.65, -10, 1, 0),
+    Size = UDim2.new(0.5, -5, 1, 0), -- 50% Width
     Position = UDim2.new(0, 5, 0, 0),
+    BackgroundTransparency = 1,
+    Parent = BottomPanel
+})
+
+-- Safety Section (Right Side of Bottom Panel)
+local SafetySection = Create("Frame", {
+    Size = UDim2.new(0.5, -10, 1, 0), -- 50% Width
+    Position = UDim2.new(0.5, 5, 0, 0),
     BackgroundTransparency = 1,
     Parent = BottomPanel
 })
@@ -693,6 +770,27 @@ local SpeedLayout = Create("UIListLayout", {
     SortOrder = Enum.SortOrder.LayoutOrder,
     VerticalAlignment = Enum.VerticalAlignment.Top, -- Align to Top
     Parent = SpeedSection
+})
+
+-- Auto Layout for Safety Section
+local SafetyLayout = Create("UIListLayout", {
+    Padding = UDim.new(0, 5),
+    FillDirection = Enum.FillDirection.Vertical,
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    VerticalAlignment = Enum.VerticalAlignment.Top,
+    Parent = SafetySection
+})
+
+-- Padding for Top Offset (Speed)
+local SpeedPadding = Create("UIPadding", {
+    PaddingTop = UDim.new(0, 15), -- Move everything down by 15px
+    Parent = SpeedSection
+})
+
+-- Padding for Top Offset (Safety)
+local SafetyPadding = Create("UIPadding", {
+    PaddingTop = UDim.new(0, 15),
+    Parent = SafetySection
 })
 
 -- Padding for Top Offset
@@ -872,6 +970,143 @@ local function UpdateFlyToggle()
     TweenService:Create(FlyToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
     TweenService:Create(FlyToggleStroke, TweenInfo.new(0.2), {Color = strokeColor}):Play()
 end
+
+Bind(FlyToggleBtn.MouseButton1Click, function()
+    IsFlying = not IsFlying
+    UpdateFlyToggle()
+    
+    if IsFlying then
+        -- Fly Logic
+         task.spawn(function()
+            local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local Camera = workspace.CurrentCamera
+            if not Root then return end
+            
+            local BV = Instance.new("BodyVelocity")
+            BV.Velocity = Vector3.zero
+            BV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            BV.Parent = Root
+            
+            local BG = Instance.new("BodyGyro")
+            BG.P = 9e4
+            BG.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            BG.CFrame = Root.CFrame
+            BG.Parent = Root
+            
+            while IsFlying and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") do
+                local camLook = Camera.CFrame.LookVector
+                local moveDir = Vector3.zero
+                
+                -- Simple Fly Controls (WASD)
+                local UIS = game:GetService("UserInputService")
+                if UIS:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + camLook end
+                if UIS:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camLook end
+                if UIS:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - Camera.CFrame.RightVector end
+                if UIS:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + Camera.CFrame.RightVector end
+                if UIS:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+                if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+                
+                BV.Velocity = moveDir * CurrentFlySpeed
+                BG.CFrame = Camera.CFrame
+                task.wait()
+            end
+            BV:Destroy()
+            BG:Destroy()
+        end)
+    end
+end)
+UpdateFlyToggle()
+
+-- HELPER: Create Toggle Row (No Input)
+local function CreateToggleRow(name, layoutOrder, parent, callback)
+    local section = Create("Frame", {
+        Size = UDim2.new(1, 0, 0, 45),
+        BackgroundTransparency = 1,
+        LayoutOrder = layoutOrder,
+        Parent = parent
+    })
+    
+    local dot = Create("Frame", {
+        Size = UDim2.new(0, 4, 0, 4),
+        Position = UDim2.new(0, 0, 0, 10),
+        BackgroundColor3 = COLORS.SELECTED,
+        Parent = section
+    })
+    CreateCorner(2, dot)
+    
+    -- Inner Content Frame
+    local inner = Create("Frame", {
+        Size = UDim2.new(1, -15, 0, 20),
+        Position = UDim2.new(0, 10, 0, 2),
+        BackgroundTransparency = 1,
+        Parent = section
+    })
+    
+    local layout = Create("UIListLayout", {
+        Padding = UDim.new(0, 10),
+        FillDirection = Enum.FillDirection.Horizontal,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        VerticalAlignment = Enum.VerticalAlignment.Center,
+        Parent = inner
+    })
+    
+    local Label = Create("TextLabel", {
+        Text = name,
+        Size = UDim2.new(0, 90, 1, 0), -- FIXED WIDTH 90px
+        BackgroundTransparency = 1,
+        TextColor3 = COLORS.TEXT,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
+        LayoutOrder = 1,
+        Parent = inner
+    })
+    
+    -- Toggle Button
+    local ToggleBtn = Create("TextButton", {
+        Text = "",
+        Size = UDim2.new(0, 40, 1, 0),
+        BackgroundColor3 = COLORS.BUTTON,
+        LayoutOrder = 2,
+        Parent = inner
+    })
+    CreateCorner(10, ToggleBtn)
+    local ToggleStroke = CreateStroke(1, Color3.fromRGB(80, 80, 80), ToggleBtn)
+    
+    local Knob = Create("Frame", {
+        Size = UDim2.new(0, 16, 0, 16),
+        Position = UDim2.new(0, 2, 0.5, -8),
+        BackgroundColor3 = Color3.fromRGB(200, 200, 200),
+        Parent = ToggleBtn
+    })
+    CreateCorner(8, Knob)
+    
+    local toggled = false
+    
+    local function Update()
+        local targetPos = toggled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+        local targetColor = toggled and COLORS.SELECTED or COLORS.BUTTON
+        local strokeColor = toggled and Color3.new(1, 1, 1) or Color3.fromRGB(80, 80, 80)
+        
+        TweenService:Create(Knob, TweenInfo.new(0.2), {Position = targetPos}):Play()
+        TweenService:Create(ToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
+        TweenService:Create(ToggleStroke, TweenInfo.new(0.2), {Color = strokeColor}):Play()
+    end
+    
+    Bind(ToggleBtn.MouseButton1Click, function()
+        toggled = not toggled
+        Update()
+        callback(toggled)
+    end)
+    
+    Update()
+    return inner
+end
+
+-- Create No Ragdoll/Stun Toggles
+CreateToggleRow("No Ragdoll", 1, SafetySection, function(val) NoRagdollEnabled = val end)
+CreateToggleRow("No Stun", 2, SafetySection, function(val) NoStunEnabled = val end)
+
 
 Bind(FlyToggleBtn.MouseButton1Click, function()
     IsFlying = not IsFlying

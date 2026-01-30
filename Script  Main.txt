@@ -779,7 +779,7 @@ end
 
 -- Init Speeds
 local minSpeed = 16
-local maxSpeed = 300
+local maxSpeed = 800
 local CurrentWalkSpeed = 24
 local CurrentFlySpeed = 24
 local WalkSpeedEnabled = false -- Toggle State
@@ -1009,10 +1009,8 @@ Bind(RunService.RenderStepped, function()
                 if forward ~= 0 or side ~= 0 then
                     moveDir = (look * forward) + (right * side)
                     if moveDir.Magnitude > 0 then
-                         local activeSpeed = CurrentWalkSpeed
-                         if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
-                             activeSpeed = CurrentFlySpeed
-                         end
+                         local activeSpeed = CurrentFlySpeed
+                         -- Removed Q hold requirement as requested
                          
                          moveDir = moveDir.Unit * activeSpeed
                     end

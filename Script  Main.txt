@@ -686,13 +686,28 @@ local SpeedSection = Create("Frame", {
     Parent = BottomPanel
 })
 
+-- Auto Layout for Speed Section
+local SpeedLayout = Create("UIListLayout", {
+    Padding = UDim.new(0, 5), -- Increased padding between elements
+    FillDirection = Enum.FillDirection.Vertical,
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    VerticalAlignment = Enum.VerticalAlignment.Top, -- Align to Top
+    Parent = SpeedSection
+})
+
+-- Padding for Top Offset
+local SpeedPadding = Create("UIPadding", {
+    PaddingTop = UDim.new(0, 15), -- Move everything down by 15px
+    Parent = SpeedSection
+})
+
 -- Helper: Create Slider
 -- Helper: Create Slider (Input Only)
-local function CreateSlider(name, relativeY, initValue, callback)
+local function CreateSlider(name, layoutOrder, initValue, callback)
     local section = Create("Frame", {
         Size = UDim2.new(1, 0, 0, 45),
-        Position = UDim2.new(0, 0, 0, relativeY),
         BackgroundTransparency = 1,
+        LayoutOrder = layoutOrder,
         Parent = SpeedSection
     })
     
@@ -722,8 +737,8 @@ local function CreateSlider(name, relativeY, initValue, callback)
     
     local Label = Create("TextLabel", {
         Text = name,
-        Size = UDim2.new(0, 0, 1, 0),
-        AutomaticSize = Enum.AutomaticSize.X,
+        Size = UDim2.new(0, 90, 1, 0), -- FIXED WIDTH for Alignment
+        -- AutomaticSize = Enum.AutomaticSize.X, -- Disable auto size
         BackgroundTransparency = 1,
         TextColor3 = COLORS.TEXT,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -783,8 +798,8 @@ CurrentFlySpeed = CurrentWalkSpeed
 local function SetWalkSpeed(val) CurrentWalkSpeed = val end
 local function SetFlySpeed(val) CurrentFlySpeed = val end
 
-local WalkInner, WalkInput = CreateSlider("WalkSpeed", 5, CurrentWalkSpeed, SetWalkSpeed)
-local FlyInner, FlyInput = CreateSlider("FlySpeed", 55, CurrentFlySpeed, SetFlySpeed)
+local WalkInner, WalkInput = CreateSlider("WalkSpeed", 1, CurrentWalkSpeed, SetWalkSpeed)
+local FlyInner, FlyInput = CreateSlider("FlySpeed", 2, CurrentFlySpeed, SetFlySpeed)
 
 -- Toggle Buttons
 -- Walk Toggle

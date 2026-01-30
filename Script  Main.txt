@@ -463,6 +463,7 @@ end
 -- Create Combat UI
 local KillAura = false
 local KillAuraTP = false -- New Toggle Variable
+local OriginalAuraPos = nil -- Store original position
 
 CreateCombatToggle("KILL AOE", function(toggle)
     if toggle then KillAura = not KillAura end
@@ -470,7 +471,22 @@ CreateCombatToggle("KILL AOE", function(toggle)
 end)
 
 CreateCombatToggle("KILL AURA TP", function(toggle)
-    if toggle then KillAuraTP = not KillAuraTP end
+    if toggle then 
+        KillAuraTP = not KillAuraTP 
+        
+        if KillAuraTP then
+            -- Enable: Save Position
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                OriginalAuraPos = LocalPlayer.Character.HumanoidRootPart.CFrame
+            end
+        else
+            -- Disable: Return to Position
+            if OriginalAuraPos and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                LocalPlayer.Character.HumanoidRootPart.CFrame = OriginalAuraPos
+                OriginalAuraPos = nil
+            end
+        end
+    end
     return KillAuraTP
 end, Color3.fromRGB(255, 100, 0)) -- Orange Color for Danger
 

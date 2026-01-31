@@ -140,9 +140,9 @@ local MinimizeBtn = Create("TextButton", {
 
 -- Reset Button
 local ResetBtn = Create("TextButton", {
-    Text = "R",
-    Size = UDim2.new(0, 40, 1, 0),
-    Position = UDim2.new(1, -120, 0, 0),
+    Text = "Reset",
+    Size = UDim2.new(0, 60, 1, 0),
+    Position = UDim2.new(1, -140, 0, 0),
     BackgroundTransparency = 1,
     TextColor3 = COLORS.TEXT,
     Font = Enum.Font.GothamBold,
@@ -154,7 +154,7 @@ local ResetBtn = Create("TextButton", {
 local RejoinIconBtn = Create("TextButton", {
     Text = "Rejoin Server",
     Size = UDim2.new(0, 110, 1, 0),
-    Position = UDim2.new(1, -230, 0, 0), -- Shifted to fit text
+    Position = UDim2.new(1, -250, 0, 0), -- Shifted to left to accommodate larger Reset button
     BackgroundTransparency = 1,
     TextColor3 = Color3.fromRGB(40, 150, 255),
     Font = Enum.Font.GothamBold,
@@ -386,7 +386,7 @@ local function CreateCombatSlider(name, min, max, init, callback)
     
     local dot = Create("Frame", {
         Size = UDim2.new(0, 4, 0, 4),
-        Position = UDim2.new(0, 0, 0, 8),
+        Position = UDim2.new(0, 0, 0, 20), -- Center vertically relative to 45 height (approx)
         BackgroundColor3 = COLORS.SELECTED,
         Parent = frame
     })
@@ -394,8 +394,8 @@ local function CreateCombatSlider(name, min, max, init, callback)
     
     -- Inner Content Frame (for Auto Layout)
     local inner = Create("Frame", {
-        Size = UDim2.new(1, -15, 0, 20), -- Height matches input/label
-        Position = UDim2.new(0, 10, 0, 0),
+        Size = UDim2.new(1, -15, 0, 30), -- Height matches input/label
+        Position = UDim2.new(0, 10, 0, 7), -- Centered vertically
         BackgroundTransparency = 1,
         Parent = frame
     })
@@ -408,15 +408,14 @@ local function CreateCombatSlider(name, min, max, init, callback)
         Parent = inner
     })
     
-    -- Label (Auto Sized)
+    -- Label (Fixed Width for alignment)
     local label = Create("TextLabel", {
         Text = name .. ":",
-        Size = UDim2.new(0, 120, 1, 0), -- Fixed Width for alignment
-        -- AutomaticSize = Enum.AutomaticSize.X,
+        Size = UDim2.new(0, 150, 1, 0), -- Increased width to ensure inputs align
         BackgroundTransparency = 1,
         TextColor3 = COLORS.TEXT,
         Font = Enum.Font.GothamBold,
-        TextSize = 13,
+        TextSize = 14,
         TextXAlignment = Enum.TextXAlignment.Left,
         LayoutOrder = 1,
         Parent = inner
@@ -429,7 +428,7 @@ local function CreateCombatSlider(name, min, max, init, callback)
         BackgroundColor3 = Color3.fromRGB(20, 20, 25),
         TextColor3 = COLORS.SELECTED,
         Font = Enum.Font.GothamBold,
-        TextSize = 13,
+        TextSize = 14,
         LayoutOrder = 2,
         Parent = inner
     })
@@ -461,6 +460,14 @@ CreateCombatToggle("Kill AOE", function(toggle)
     return KillAura
 end)
 
+CreateCombatSlider("AOE Radius", 10, 100, 50, function(val)
+    KillRadius = val
+end)
+
+CreateCombatSlider("Attack Delay (ms)", 10, 50, 50, function(val)
+    AttackDelay = val / 1000
+end)
+
 CreateCombatToggle("Kill Aura TP", function(toggle)
     if toggle then 
         KillAuraTP = not KillAuraTP 
@@ -480,14 +487,6 @@ CreateCombatToggle("Kill Aura TP", function(toggle)
     end
     return KillAuraTP
 end, Color3.fromRGB(255, 100, 0)) -- Orange Color for Danger
-
-CreateCombatSlider("AOE Radius", 10, 100, 50, function(val)
-    KillRadius = val
-end)
-
-CreateCombatSlider("Attack Delay (ms)", 10, 50, 50, function(val)
-    AttackDelay = val / 1000
-end)
 
 local OriginalFlingPos = nil
 local OriginalCamSubject = nil

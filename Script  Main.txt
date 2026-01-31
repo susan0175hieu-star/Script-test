@@ -139,7 +139,7 @@ local MinimizeBtn = Create("TextButton", {
 local ResetBtn = Create("TextButton", {
     Text = "Reset",
     Size = UDim2.new(0, 60, 1, 0),
-    Position = UDim2.new(1, -140, 0, 0),
+    Position = UDim2.new(1, -250, 0, 0), -- Swapped to Left
     BackgroundTransparency = 1,
     TextColor3 = COLORS.TEXT,
     Font = Enum.Font.GothamBold,
@@ -151,7 +151,7 @@ local ResetBtn = Create("TextButton", {
 local RejoinIconBtn = Create("TextButton", {
     Text = "Rejoin Server",
     Size = UDim2.new(0, 110, 1, 0),
-    Position = UDim2.new(1, -250, 0, 0), -- Shifted to left to accommodate larger Reset button
+    Position = UDim2.new(1, -190, 0, 0), -- Swapped to Right
     BackgroundTransparency = 1,
     TextColor3 = Color3.fromRGB(40, 150, 255),
     Font = Enum.Font.GothamBold,
@@ -294,6 +294,7 @@ local KillAura = false
 local KillRadius = 50 -- Fixed distance 50
 local AttackDelay = 0.025
 local TargetRemoteName = ""
+local SelectedTargetUserId = nil -- Persistent Target ID
 local FlingEnabled = false
 local FlingTarget = nil
 
@@ -467,17 +468,32 @@ end)
 CreateCombatToggle("Kill Aura TP", function(toggle)
     if toggle then 
         KillAuraTP = not KillAuraTP 
+        local Cam = workspace.CurrentCamera
         
         if KillAuraTP then
             -- Enable: Save Position
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 OriginalAuraPos = LocalPlayer.Character.HumanoidRootPart.CFrame
             end
+            
+            -- Enable: Spectate
+            if Cam and SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("Humanoid") then
+                if not OriginalCamSubject then OriginalCamSubject = Cam.CameraSubject end
+                Cam.CameraSubject = SelectedPlayer.Character.Humanoid
+            end
         else
             -- Disable: Return to Position
             if OriginalAuraPos and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 LocalPlayer.Character.HumanoidRootPart.CFrame = OriginalAuraPos
                 OriginalAuraPos = nil
+            end
+            
+            -- Disable: Restore Camera
+            if Cam and OriginalCamSubject then
+                Cam.CameraSubject = OriginalCamSubject
+                OriginalCamSubject = nil
+            elseif Cam and LocalPlayer.Character then
+                Cam.CameraSubject = LocalPlayer.Character:FindFirstChild("Humanoid")
             end
         end
     end
@@ -720,6 +736,12 @@ Bind(RunService.Heartbeat, function()
                      -- TELEPORT BEHIND TARGET
                      myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3) 
                      canAttack = true
+                     
+                     -- Spectate Update
+                     local Cam = workspace.CurrentCamera
+                     if Cam and Cam.CameraSubject ~= targetRoot.Parent:FindFirstChild("Humanoid") then
+                         Cam.CameraSubject = targetRoot.Parent:FindFirstChild("Humanoid")
+                     end
                 
                 -- FLING AURA LOCK: Always hit the fling target (Synergy)
                 elseif FlingEnabled and p == FlingTarget then
@@ -1280,7 +1302,8 @@ local function RefreshPlayers()
             Bind(btn.MouseButton1Click, function()
                 if SelectedPlayer == player then
                     SelectedPlayer = nil
-                    FlingTarget = nil -- FIX: Clear target when unselecting
+                    FlingTarget = nil 
+                    SelectedTargetUserId = nil -- Clear Persistent ID
                     btn.BackgroundColor3 = COLORS.BUTTON
                 else
                     -- Reset others
@@ -1289,10 +1312,18 @@ local function RefreshPlayers()
                     end
                     SelectedPlayer = player
                     FlingTarget = player
+                    SelectedTargetUserId = player.UserId -- Save Persistent ID
                     btn.BackgroundColor3 = COLORS.SELECTED
                 end
                 UpdateESP()
             end)
+            
+            -- Auto Re-Select (Persistence)
+            if SelectedTargetUserId and player.UserId == SelectedTargetUserId then
+                SelectedPlayer = player
+                FlingTarget = player
+                btn.BackgroundColor3 = COLORS.SELECTED
+            end
         end
     end
 end

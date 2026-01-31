@@ -1,6 +1,3 @@
--- Project Viltrumites Character GUI v2
--- Optimized with RenderStepped for Speed and Cleaned Up
-
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -294,8 +291,8 @@ Create("UIListLayout", { Padding = UDim.new(0, 5), Parent = CombatContainer })
 
 -- [[ COMBAT LOGIC & UI ]] --
 local KillAura = false
-local KillRadius = 50
-local AttackDelay = 0.05
+local KillRadius = 100
+local AttackDelay = 0.025
 local TargetRemoteName = ""
 local FlingEnabled = false
 local FlingTarget = nil
@@ -460,11 +457,11 @@ CreateCombatToggle("Kill AOE", function(toggle)
     return KillAura
 end)
 
-CreateCombatSlider("AOE Radius", 10, 100, 50, function(val)
+CreateCombatSlider("AOE Radius", 10, 100, 100, function(val)
     KillRadius = val
 end)
 
-CreateCombatSlider("Attack Delay (ms)", 10, 50, 50, function(val)
+CreateCombatSlider("Attack Delay (ms)", 10, 50, 25, function(val)
     AttackDelay = val / 1000
 end)
 

@@ -291,7 +291,7 @@ Create("UIListLayout", { Padding = UDim.new(0, 5), Parent = CombatContainer })
 
 -- [[ COMBAT LOGIC & UI ]] --
 local KillAura = false
-local KillRadius = 100
+local KillRadius = 50 -- Fixed distance 50
 local AttackDelay = 0.025
 local TargetRemoteName = ""
 local FlingEnabled = false
@@ -457,9 +457,8 @@ CreateCombatToggle("Kill AOE", function(toggle)
     return KillAura
 end)
 
-CreateCombatSlider("AOE Radius", 10, 100, 100, function(val)
-    KillRadius = val
-end)
+-- Slider removed as requested
+
 
 CreateCombatSlider("Attack Delay (ms)", 10, 50, 25, function(val)
     AttackDelay = val / 1000
@@ -489,38 +488,74 @@ local OriginalFlingPos = nil
 local OriginalCamSubject = nil
 
 CreateCombatToggle("Fling", function(toggle)
-    if toggle then 
+    if toggle then
         FlingEnabled = not FlingEnabled
-        local Hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-        local Cam = workspace.CurrentCamera
         
+        local Hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local Cam = workspace.CurrentCamera
+
         if FlingEnabled then
             -- JUST ENABLED
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                OriginalFlingPos = LocalPlayer.Character.HumanoidRootPart.CFrame
-            end
-            if Hum then Hum.AutoRotate = false end -- Disable default rotation
+            if Root then OriginalFlingPos = Root.CFrame end
             
-            -- Detach Camera from spinning player
+            -- Spectate
             if Cam then
                 OriginalCamSubject = Cam.CameraSubject
+                if FlingTarget and FlingTarget.Character and FlingTarget.Character:FindFirstChild("Humanoid") then
+                    Cam.CameraSubject = FlingTarget.Character.Humanoid
+                end
+            end
+            
+            -- Self ESP
+            if LocalPlayer.Character then
+                local hl = Instance.new("Highlight")
+                hl.Name = "SelfFlingESP"
+                hl.FillColor = Color3.fromRGB(0, 255, 100)
+                hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                hl.FillTransparency = 0.5
+                hl.Parent = LocalPlayer.Character
             end
         else
             -- JUST DISABLED
-            if OriginalFlingPos and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local Root = LocalPlayer.Character.HumanoidRootPart
-                Root.CFrame = OriginalFlingPos
-                Root.Velocity = Vector3.zero
-                Root.RotVelocity = Vector3.zero
-                Root.AssemblyLinearVelocity = Vector3.zero
-                Root.AssemblyAngularVelocity = Vector3.zero
-                OriginalFlingPos = nil
+            if Hum then Hum.PlatformStand = false end
+            
+            -- Restore Collisions (Fix falling through ground)
+            if LocalPlayer.Character then
+                for _, part in pairs(LocalPlayer.Character:GetChildren()) do
+                    if part:IsA("BasePart") then part.CanCollide = true end
+                end
             end
             
-            if Hum then Hum.AutoRotate = true end
-            if Cam and OriginalCamSubject then Cam.CameraSubject = OriginalCamSubject end
+            -- Restore Position
+            if Root and OriginalFlingPos then
+                Root.CFrame = OriginalFlingPos + Vector3.new(0, 2, 0) -- Reduced height to 2
+                Root.AssemblyAngularVelocity = Vector3.zero
+                Root.AssemblyLinearVelocity = Vector3.zero
+                OriginalFlingPos = nil
+                
+                -- Force Stand Up
+                if Hum then
+                    Hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
+            end
+            
+            -- Restore Camera
+            if Cam and OriginalCamSubject then
+                Cam.CameraSubject = OriginalCamSubject
+                OriginalCamSubject = nil
+            elseif Cam and Hum then
+                Cam.CameraSubject = Hum
+            end
+            
+            -- Remove Self ESP
+            if LocalPlayer.Character then
+                local hl = LocalPlayer.Character:FindFirstChild("SelfFlingESP")
+                if hl then hl:Destroy() end
+            end
         end
     end
+    
     return FlingEnabled
 end, Color3.fromRGB(255, 50, 50))
 
@@ -594,94 +629,68 @@ SetupChildAdded(LocalPlayer.Character)
 
 
 -- [[ FLING LOGIC ]] --
-local BodyVelocity = Instance.new("BodyVelocity")
-BodyVelocity.Velocity = Vector3.new(0, 0, 0)
-BodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-
-local BodyAngularVelocity = Instance.new("BodyAngularVelocity")
-BodyAngularVelocity.AngularVelocity = Vector3.new(0, 99999, 0)
-BodyAngularVelocity.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+local FlingBAV = nil
+local FlingBV = nil
 
 Bind(RunService.Stepped, function()
-    local hasTarget = FlingTarget and FlingTarget.Character and FlingTarget.Character:FindFirstChild("HumanoidRootPart")
-    
-    -- SAFETY CHECK: If we fall into the void (Countered/BgBug), disable Fling immediately
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        if LocalPlayer.Character.HumanoidRootPart.Position.Y < -500 then
-            FlingEnabled = false
-            
-            -- Reset Physics
-            LocalPlayer.Character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
-            LocalPlayer.Character.HumanoidRootPart.AssemblyAngularVelocity = Vector3.zero
-            
-            if LocalPlayer.Character:FindFirstChild("Humanoid") then
-                LocalPlayer.Character.Humanoid.PlatformStand = false
-                LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Dead) -- Force respawn
+    if FlingEnabled and FlingTarget and FlingTarget.Character and FlingTarget.Character:FindFirstChild("HumanoidRootPart") then
+        local targetRoot = FlingTarget.Character.HumanoidRootPart
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local myHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        
+        if myRoot and myHum and myHum.Health > 0 then
+            -- Setup Body Movers Safely
+            if not FlingBAV or FlingBAV.Parent ~= myRoot then
+                 if FlingBAV then FlingBAV:Destroy() end
+                 FlingBAV = Instance.new("BodyAngularVelocity")
+                 FlingBAV.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                 FlingBAV.Parent = myRoot
             end
+            
+            if not FlingBV or FlingBV.Parent ~= myRoot then
+                 if FlingBV then FlingBV:Destroy() end
+                 FlingBV = Instance.new("BodyVelocity")
+                 FlingBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                 FlingBV.Parent = myRoot
+            end
+            
+            myHum.PlatformStand = true
 
-            -- Auto Re-enable after 2 seconds (Respawn time)
-            task.delay(2, function()
-                FlingEnabled = true
-            end)
-            return
-        end
-    end
-     
-    -- NORMAL CHECKS
-    if not FlingEnabled or not hasTarget or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then 
-        BodyVelocity.Parent = nil
-        BodyAngularVelocity.Parent = nil
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.PlatformStand = false
-        end
-        return 
-    end
-    
-    local Root = LocalPlayer.Character.HumanoidRootPart
-    local Hum = LocalPlayer.Character:FindFirstChild("Humanoid")
-    
-    -- Check if we died
-    if Hum and Hum.Health <= 0 then
-        FlingEnabled = false
-        return
-    end
-    
-    if Hum then Hum.PlatformStand = true end
-    
-    pcall(function()
-        BodyVelocity.Parent = Root
-        BodyAngularVelocity.Parent = Root
-    end)
-    
-    local targetRoot = FlingTarget.Character.HumanoidRootPart
-    
-    -- Chaotic Fling: Lock position NEAR target (jitter) + Random Rotation
-    -- Accuracy Tuned: Reduced multiplier to 4 for better hit consistency
-    local jitter = Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * 4
-    Root.CFrame = CFrame.new(targetRoot.Position + jitter) * CFrame.Angles(math.random(-10, 10), math.random(-10, 10), math.random(-10, 10))
-    Root.AssemblyLinearVelocity = Vector3.zero 
-    BodyVelocity.Velocity = Vector3.zero -- Ensure no drift
-    BodyAngularVelocity.AngularVelocity = Vector3.new(10000, 10000, 10000) -- Clean standard torque
-end)
 
--- CAMERA STABILIZER (RenderStepped - High Priority)
-Bind(RunService.RenderStepped, function()
-    local Cam = workspace.CurrentCamera
-    
-    if FlingEnabled and FlingTarget and FlingTarget.Character and FlingTarget.Character:FindFirstChild("Humanoid") then
-        -- SPECTATE MODE: Set CameraSubject to the Target's Humanoid
-        -- This allows standard Roblox camera control AROUND the enemy
-        -- The enemy is not spinning, so the camera is stable.
-        if Cam.CameraSubject ~= FlingTarget.Character.Humanoid then
-            Cam.CameraType = Enum.CameraType.Custom
-            Cam.CameraSubject = FlingTarget.Character.Humanoid
+            -- Chaotic Fling: Lock position NEAR target (jitter) + Random Rotation
+            -- Accuracy Tuned: Reduced multiplier to 4 for better hit consistency
+            -- EVASION: "Underground Jitter" - Stay below target to dodge generic Kill Auras and fling harder
+            local jitter = Vector3.new(
+                (math.random() - 0.5) * 4, 
+                -3.5 + (math.random() - 0.5) * 2, -- Jitter between -2.5 and -4.5 (UNDERGROUND/FEET)
+                (math.random() - 0.5) * 4
+            )
+            local prediction = targetRoot.AssemblyLinearVelocity * 0.15
+            
+            myRoot.CFrame = CFrame.new(targetRoot.Position + prediction + jitter) * CFrame.Angles(math.random(-10, 10), math.random(-10, 10), math.random(-10, 10))
+            myRoot.AssemblyLinearVelocity = targetRoot.AssemblyLinearVelocity -- Match target velocity to stay with them
+            FlingBV.Velocity = Vector3.zero -- Ensure no drift from body movers
+            FlingBAV.AngularVelocity = Vector3.new(10000, 10000, 10000) -- Clean standard torque
+            
+            -- Spectate Update (in case target changed)
+            local Cam = workspace.CurrentCamera
+            if Cam and Cam.CameraSubject ~= targetRoot.Parent:FindFirstChild("Humanoid") then
+                Cam.CameraSubject = targetRoot.Parent:FindFirstChild("Humanoid")
+            end
+            
+            -- Optional: Desync/Noclip
+            for _, part in pairs(LocalPlayer.Character:GetChildren()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        else
+             -- Wait for respawn or valid state
+             if FlingBAV then FlingBAV:Destroy(); FlingBAV = nil end
+             if FlingBV then FlingBV:Destroy(); FlingBV = nil end
         end
-    elseif not FlingEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-         -- RESTORE: Set CameraSubject back to Self
-         if Cam.CameraSubject ~= LocalPlayer.Character.Humanoid then
-             Cam.CameraType = Enum.CameraType.Custom
-             Cam.CameraSubject = LocalPlayer.Character.Humanoid
-         end
+    else
+        -- Cleanup
+        if FlingBAV then FlingBAV:Destroy(); FlingBAV = nil end
+        if FlingBV then FlingBV:Destroy(); FlingBV = nil end
     end
 end)
 
@@ -694,6 +703,7 @@ Bind(RunService.Heartbeat, function()
     if (KillAura or KillAuraTP) and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local myRoot = LocalPlayer.Character.HumanoidRootPart
         local myPos = myRoot.Position
+        local Targets = {} -- Batch Collection
         
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
@@ -711,43 +721,55 @@ Bind(RunService.Heartbeat, function()
                      myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3) 
                      canAttack = true
                 
+                -- FLING AURA LOCK: Always hit the fling target (Synergy)
+                elseif FlingEnabled and p == FlingTarget then
+                     canAttack = true
+
                 -- AUTO FARM/AURA: Distance check for everyone else
                 elseif KillAura and targetDist < KillRadius then
                      canAttack = true
                 end
                 
                 if canAttack then
-                    -- Attack target p
-                    local targetChar = p.Character
-                    
-                    -- 1. Try Remote Event (Based on Sniffer Data)
-                    local eventsFolder = ReplicatedStorage:FindFirstChild("Events")
-                    if eventsFolder then
-                        local ce = eventsFolder:FindFirstChild("CombatEvent")
-                        local he = eventsFolder:FindFirstChild("HitEvent")
-                        
-                        -- Pattern found in Sniffer:
-                        -- CombatEvent fires with "Attack"
-                        -- HitEvent fires with a Table containing the target
-                        if ce then pcall(function() ce:FireServer("Attack") end) end
-                        if he then pcall(function() he:FireServer({ targetChar }) end) end
-                    end
-
-                    -- 2. Fallback User-defined Remote
-                    if TargetRemoteName ~= "" and TargetRemoteName ~= "CombatEvent" and TargetRemoteName ~= "HitEvent" then
-                        local customRemote = ReplicatedStorage:FindFirstChild(TargetRemoteName, true)
-                        if customRemote then
-                            pcall(function() customRemote:FireServer(targetChar) end)
-                        end
-                    end
-                    
-                    -- 2. Tool Activate / Click (Melee Range Only)
-                    if targetDist < 15 or KillAuraTP then 
-                        local Tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
-                        if Tool then Tool:Activate() end
-                    end
+                    table.insert(Targets, p.Character)
                 end
             end
+        end
+        
+        -- EXECUTE BATCH ATTACK
+        if #Targets > 0 then
+            -- 1. Try Remote Event (Based on Sniffer Data)
+            local eventsFolder = ReplicatedStorage:FindFirstChild("Events")
+            if eventsFolder then
+                local ce = eventsFolder:FindFirstChild("CombatEvent")
+                local he = eventsFolder:FindFirstChild("HitEvent")
+                
+                -- Pattern found in Sniffer:
+                -- CombatEvent fires with "Attack" (Once per batch)
+                -- HitEvent fires with a Table containing the targets (BATCH FIRE)
+                if ce then pcall(function() ce:FireServer("Attack") end) end
+                if he then pcall(function() he:FireServer(Targets) end) end
+            end
+
+            -- 2. Fallback / Tool Activation
+            local Tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
+            
+            for _, targetChar in pairs(Targets) do
+                -- Fallback User-defined Remote (One by one, as custom remote might not support table)
+                if TargetRemoteName ~= "" and TargetRemoteName ~= "CombatEvent" and TargetRemoteName ~= "HitEvent" then
+                    local customRemote = ReplicatedStorage:FindFirstChild(TargetRemoteName, true)
+                    if customRemote then
+                        pcall(function() customRemote:FireServer(targetChar) end)
+                    end
+                end
+                
+                -- Tool Activate / Click (Melee Range Only)
+                -- We activate tool once per loop if we have targets near enough? 
+                -- Or just activate once? Activating too fast might be ignored. 
+                -- Let's just activate once if we have targets.
+            end
+            
+            if Tool then Tool:Activate() end
         end
     end
 end)
@@ -1258,6 +1280,7 @@ local function RefreshPlayers()
             Bind(btn.MouseButton1Click, function()
                 if SelectedPlayer == player then
                     SelectedPlayer = nil
+                    FlingTarget = nil -- FIX: Clear target when unselecting
                     btn.BackgroundColor3 = COLORS.BUTTON
                 else
                     -- Reset others

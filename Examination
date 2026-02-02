@@ -599,6 +599,26 @@ local aimFOV = 150
 local aimSmoothness = 0.6
 local validEnemies = {}
 
+-- HELPER: Weapon Detection (Tools + Custom Names)
+local function hasWeapon(char)
+    if not char then return false end
+    -- 1. Standard Tool
+    if char:FindFirstChildOfClass("Tool") then return true end
+    
+    -- 2. Custom Named Parts/Models (e.g. Chainsaw)
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("BasePart") or child:IsA("Model") then
+             local name = string.lower(child.Name)
+             if string.find(name, "chainsaw") or string.find(name, "weapon") or 
+                string.find(name, "gun") or string.find(name, "rifle") or
+                string.find(name, "axe") or string.find(name, "blade") or string.find(name, "knife") then
+                 return true
+             end
+        end
+    end
+    return false
+end
+
 -- 1. Enemy Tracker (Smart Scanner)
 local function addEnemy(model)
     if model == LocalPlayer.Character then return end
@@ -609,12 +629,12 @@ local function addEnemy(model)
         local root = model:FindFirstChild("HumanoidRootPart")
         if root and root.Anchored then
             -- WEAPON CHECK: If it has a gun/tool, it's NOT a statue (it's an armed guard)
-            if model:FindFirstChildOfClass("Tool") then
+            if hasWeapon(model) then
                 -- Bypass wait, it's an enemy
             else
                 task.wait(1)
                 -- If still anchored after 1s AND no weapon, it's a statue
-                if root and root.Anchored and not model:FindFirstChildOfClass("Tool") then return end
+                if root and root.Anchored and not hasWeapon(model) then return end
             end
         end
         if not model:IsDescendantOf(game) then return end
@@ -675,6 +695,18 @@ local function getClosestTarget()
                          (character:FindFirstChild("UpperTorso") and character.UpperTorso:FindFirstChild("Neck"))
             
             if not neck then return end -- No neck = Dead Ragdoll
+
+            -- SLEEP CHECK (Filter Inactive/Sleeping)
+            -- If physics state (prone), check if they are a threat or moving
+            local root = character:FindFirstChild("HumanoidRootPart")
+             local root = character:FindFirstChild("HumanoidRootPart")
+            if root then
+                 local velocity = root.Velocity.Magnitude
+                 local isArmed = hasWeapon(character)
+                 
+                 -- If stationary (<1 stud/s) AND unarmed -> Ignore (Sleeping)
+                 if velocity < 1 and not isArmed then return end
+            end
         end
         
         -- STRICT SELF CHECK
@@ -690,11 +722,30 @@ local function getClosestTarget()
         local isVisible = false
         
         -- Helper to check a specific part
+        -- Helper to check a specific part with Smart Penetration
         local function isPartVisible(part)
             local direction = (part.Position - origin)
-            local result = workspace:Raycast(origin, direction, rayParams)
-            if not result then return true end -- Clear line of sight
-            return false
+            
+            -- Recursively cast to penetrate transparent/non-collidable parts
+            local sanity = 0
+            while sanity < 10 do -- Limit penetration depth
+                sanity = sanity + 1
+                local result = workspace:Raycast(origin, direction, rayParams)
+                if not result then return true end -- Reached destination
+                
+                -- Hit Obstacle. Check if penetrable.
+                -- 1. High Transparency (Glass/Invisible Wall)
+                -- 2. CanCollide = false (Phantom/Trigger)
+                if result.Instance.Transparency > 0.5 or not result.Instance.CanCollide then
+                    local filter = rayParams.FilterDescendantsInstances
+                    table.insert(filter, result.Instance)
+                    rayParams.FilterDescendantsInstances = filter
+                    -- Continue loop
+                else
+                    return false -- Solid Wall
+                end
+            end
+            return false -- Too many layers
         end
         
         -- 1. Check Head first (Fastest match)
@@ -923,7 +974,7 @@ local function addInfectESP(model)
         if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
 
         -- 1. Has weapon? ALWAYS Valid.
-        if model:FindFirstChildOfClass("Tool") then return true end
+        if hasWeapon(model) then return true end
         -- 2. Anchored? INVALID (Statue) until unanchored.
         if root.Anchored then return false end
         return true
@@ -956,7 +1007,8 @@ local function addInfectESP(model)
         -- 2. Watch for Weapon Equip
         local toolConn
         toolConn = model.ChildAdded:Connect(function(child)
-            if child:IsA("Tool") then
+            task.wait() -- Wait for props
+            if hasWeapon(model) then
                 tryAdd()
                 if toolConn then toolConn:Disconnect() toolConn = nil end
             end

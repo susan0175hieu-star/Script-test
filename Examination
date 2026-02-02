@@ -55,6 +55,15 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 8)
 UICorner.Parent = MainFrame
 
+-- Modal Fix (Force mouse unlock when GUI is visible)
+local ModalFix = Instance.new("TextButton")
+ModalFix.Name = "ModalFix"
+ModalFix.Size = UDim2.new(0, 0, 0, 0)
+ModalFix.BackgroundTransparency = 1
+ModalFix.Text = ""
+ModalFix.Modal = true
+ModalFix.Parent = MainFrame
+
 -- > Header
 local Header = Instance.new("Frame")
 Header.Name = "Header"
@@ -1069,8 +1078,30 @@ workspace.DescendantAdded:Connect(function(obj)
     end
 end)
 
+-- 4. Aggressive Mouse Unlock (Shift Lock Fix)
+local mouseOverrideConnection = RunService.RenderStepped:Connect(function()
+    if not ScreenGui.Parent then 
+        if mouseOverrideConnection then mouseOverrideConnection:Disconnect() end
+        return 
+    end
+    
+    if MainFrame.Visible then
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        UserInputService.MouseIconEnabled = true
+        
+        -- Also ensure the modal fix is sized correctly just in case
+        local modal = MainFrame:FindFirstChild("ModalFix")
+        if modal then modal.Size = UDim2.new(1, 0, 1, 0) end
+    end
+end)
+
 -- [ CLEANUP LOGIC ]
 local function cleanupGUI()
+    if mouseOverrideConnection then
+        mouseOverrideConnection:Disconnect()
+        mouseOverrideConnection = nil
+    end
+    
     if fullBrightConnection then 
         fullBrightConnection:Disconnect() 
         fullBrightConnection = nil
@@ -1111,7 +1142,7 @@ end)
 
 -- [ TOGGLE ALL KEYBIND ]
 UserInputService.InputBegan:Connect(function(input, gpe)
-    if input.KeyCode == Enum.KeyCode.C and not gpe then
+    if input.KeyCode == Enum.KeyCode.RightControl and not gpe then
         if MainFrame.Visible then
             -- Minimize
             MainFrame.Visible = false

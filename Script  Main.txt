@@ -196,9 +196,10 @@ Bind(OpenBtn.MouseButton1Click, function()
 end)
 
 -- [[ LAYOUT ]] --
+-- Column 1: Characters
 local LeftPanel = Create("Frame", {
-    Size = UDim2.new(0.24, 0, 1, -235), 
-    Position = UDim2.new(0, 10, 0, 45),
+    Size = UDim2.new(0, 245, 1, -235), 
+    Position = UDim2.new(0, 12, 0, 45),
     BackgroundColor3 = COLORS.PANEL,
     Parent = MainFrame
 })
@@ -213,21 +214,29 @@ Create("TextLabel", {
     Parent = LeftPanel
 })
 local CharContainer = Create("ScrollingFrame", {
-    Size = UDim2.new(1, -10, 1, -40),
-    Position = UDim2.new(0, 5, 0, 35),
+    Size = UDim2.new(1, 0, 1, -40),
+    Position = UDim2.new(0, 0, 0, 35),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
-    ScrollBarThickness = 10,
+    ScrollBarThickness = 8,
+    VerticalScrollBarInset = Enum.ScrollBarInset.Always,
     AutomaticCanvasSize = Enum.AutomaticSize.Y,
     CanvasSize = UDim2.new(0, 0, 0, 0),
     Parent = LeftPanel
 })
-Create("UIListLayout", { Padding = UDim.new(0, 5), Parent = CharContainer })
-Create("UIPadding", { PaddingBottom = UDim.new(0, 10), PaddingTop = UDim.new(0, 5), PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5), Parent = CharContainer })
+Create("UIPadding", { 
+    PaddingLeft = UDim.new(0, 15), 
+    PaddingRight = UDim.new(0, 15), 
+    PaddingTop = UDim.new(0, 5),
+    PaddingBottom = UDim.new(0, 10),
+    Parent = CharContainer 
+})
+Create("UIListLayout", { Padding = UDim.new(0, 8), Parent = CharContainer })
 
+-- Column 2: Players
 local MidPanel = Create("Frame", {
-    Size = UDim2.new(0.24, 0, 1, -235), 
-    Position = UDim2.new(0.26, 0, 0, 45),
+    Size = UDim2.new(0, 245, 1, -235), 
+    Position = UDim2.new(0, 269, 0, 45),
     BackgroundColor3 = COLORS.PANEL,
     Parent = MainFrame
 })
@@ -245,8 +254,9 @@ local PlayerContainer = Create("ScrollingFrame", {
     Size = UDim2.new(1, -10, 1, -40),
     Position = UDim2.new(0, 5, 0, 35),
     BackgroundTransparency = 1,
-    ScrollBarThickness = 10,
+    ScrollBarThickness = 8,
     ScrollBarImageColor3 = COLORS.SELECTED,
+    VerticalScrollBarInset = Enum.ScrollBarInset.Always,
     CanvasSize = UDim2.new(0, 0, 0, 0),
     AutomaticCanvasSize = Enum.AutomaticSize.Y,
     Parent = MidPanel
@@ -257,9 +267,10 @@ Create("UIListLayout", {
     Parent = PlayerContainer 
 })
 
+-- Column 3: Combat
 local RightPanel = Create("Frame", {
-    Size = UDim2.new(0.48, 0, 1, -235),
-    Position = UDim2.new(0.51, 0, 0, 45),
+    Size = UDim2.new(0, 512, 1, -235),
+    Position = UDim2.new(0, 526, 0, 45),
     BackgroundColor3 = COLORS.PANEL,
     Parent = MainFrame
 })
@@ -278,7 +289,8 @@ local CombatContainer = Create("ScrollingFrame", {
     Position = UDim2.new(0, 5, 0, 35),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
-    ScrollBarThickness = 10,
+    ScrollBarThickness = 8,
+    VerticalScrollBarInset = Enum.ScrollBarInset.Always,
     AutomaticCanvasSize = Enum.AutomaticSize.Y,
     CanvasSize = UDim2.new(0, 0, 0, 0),
     Parent = RightPanel
@@ -686,9 +698,9 @@ local BottomPanel = Create("Frame", {
 })
 CreateCorner(6, BottomPanel)
 
-local SpeedSection = Create("Frame", { Size = UDim2.new(0.24, 0, 1, 0), Position = UDim2.new(0, 5, 0, 0), BackgroundTransparency = 1, Parent = BottomPanel })
-local MidSettings = Create("Frame", { Size = UDim2.new(0.24, 0, 1, 0), Position = UDim2.new(0.26, 0, 0, 0), BackgroundTransparency = 1, Parent = BottomPanel })
-local SafetySection = Create("Frame", { Size = UDim2.new(0.48, 0, 1, 0), Position = UDim2.new(0.51, 0, 0, 0), BackgroundTransparency = 1, Parent = BottomPanel })
+local SpeedSection = Create("Frame", { Size = UDim2.new(0, 245, 1, 0), Position = UDim2.new(0, 7, 0, 0), BackgroundTransparency = 1, Parent = BottomPanel })
+local MidSettings = Create("Frame", { Size = UDim2.new(0, 245, 1, 0), Position = UDim2.new(0, 264, 0, 0), BackgroundTransparency = 1, Parent = BottomPanel })
+local SafetySection = Create("Frame", { Size = UDim2.new(0, 510, 1, 0), Position = UDim2.new(0, 521, 0, 0), BackgroundTransparency = 1, Parent = BottomPanel })
 
 Create("UIListLayout", { Padding = UDim.new(0, 5), FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder, Parent = SpeedSection })
 Create("UIListLayout", { Padding = UDim.new(0, 5), FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder, Parent = MidSettings })
@@ -809,11 +821,31 @@ local function RefreshPlayers()
     for _, child in pairs(PlayerContainer:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
-            local btn = Create("TextButton", { Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = (SelectedPlayer == player) and COLORS.SELECTED or COLORS.BUTTON, Parent = PlayerContainer, Text = "" })
-            CreateCorner(4, btn)
-            local avatar = Create("ImageLabel", { Size = UDim2.new(0, 30, 0, 30), Position = UDim2.new(0, 5, 0, 5), BackgroundTransparency = 0.5, Parent = btn })
-            CreateCorner(15, avatar)
-            Create("TextLabel", { Text = player.DisplayName, Size = UDim2.new(1, -45, 1, 0), Position = UDim2.new(0, 45, 0, 0), BackgroundTransparency = 1, TextColor3 = COLORS.TEXT, Font = Enum.Font.GothamSemibold, Parent = btn })
+            local btn = Create("TextButton", { 
+                Size = UDim2.new(1, 0, 0, 45), 
+                BackgroundColor3 = (SelectedPlayer == player) and COLORS.SELECTED or COLORS.BUTTON, 
+                Parent = PlayerContainer, 
+                Text = "" 
+            })
+            CreateCorner(6, btn)
+            local avatar = Create("ImageLabel", { 
+                Size = UDim2.new(0, 35, 0, 35), 
+                Position = UDim2.new(0, 5, 0.5, -17), 
+                BackgroundTransparency = 0.5, 
+                Parent = btn 
+            })
+            CreateCorner(18, avatar)
+            Create("TextLabel", { 
+                Text = player.DisplayName, 
+                Size = UDim2.new(1, -55, 1, 0), 
+                Position = UDim2.new(0, 50, 0, 0), 
+                BackgroundTransparency = 1, 
+                TextColor3 = COLORS.TEXT, 
+                Font = Enum.Font.GothamBold, 
+                TextSize = 15, 
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Parent = btn 
+            })
             task.spawn(function() pcall(function() avatar.Image = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420) end) end)
             Bind(btn.MouseButton1Click, function()
                 if SelectedPlayer == player then
@@ -843,11 +875,81 @@ local function ChangeCharacter(charName)
 end
 
 local function CreateStylishCharBtn(text, realName, themeColor)
-    local btnFrame = Create("Frame", { Size = UDim2.new(1, 0, 0, 45), BackgroundColor3 = Color3.fromRGB(30,30,35), Parent = CharContainer })
-    CreateCorner(8, btnFrame)
-    local label = Create("TextLabel", { Text = text, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, TextColor3 = themeColor, Font = Enum.Font.GothamBlack, Parent = btnFrame })
-    local interact = Create("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Parent = btnFrame, Text = "" })
-    Bind(interact.MouseButton1Click, function() ChangeCharacter(realName) end)
+    -- Container
+    local btnFrame = Create("Frame", {
+        Name = text .. "Btn",
+        Size = UDim2.new(1, 0, 0, 55), -- Taller for more presence
+        BackgroundColor3 = Color3.fromRGB(25, 25, 30),
+        Parent = CharContainer
+    })
+    CreateCorner(10, btnFrame)
+    
+    local stroke = CreateStroke(1.5, themeColor, btnFrame)
+    stroke.Transparency = 0.7
+    
+    -- Subtle Gradient for Depth
+    local grad = Create("UIGradient", {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 150, 150))
+        }),
+        Rotation = 90,
+        Transparency = NumberSequence.new(0.9, 1),
+        Parent = btnFrame
+    })
+
+    -- Text Label
+    local label = Create("TextLabel", {
+        Text = text:upper(),
+        Size = UDim2.new(1, -40, 1, 0),
+        Position = UDim2.new(0, 20, 0, 0),
+        BackgroundTransparency = 1,
+        TextColor3 = themeColor,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 16,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = btnFrame
+    })
+
+    -- Character Icon Placeholder / Indicator
+    local indicator = Create("Frame", {
+        Size = UDim2.new(0, 4, 0, 20),
+        Position = UDim2.new(1, -12, 0.5, -10),
+        BackgroundColor3 = themeColor,
+        Parent = btnFrame
+    })
+    CreateCorner(2, indicator)
+
+    -- Interaction Overlay
+    local interact = Create("TextButton", {
+        Text = "",
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        ZIndex = 5,
+        Parent = btnFrame
+    })
+
+    -- Hover Effects
+    interact.MouseEnter:Connect(function()
+        TweenService:Create(btnFrame, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(35, 35, 45)}):Play()
+        TweenService:Create(stroke, TweenInfo.new(0.3), {Transparency = 0.2, Thickness = 2.5}):Play()
+        TweenService:Create(label, TweenInfo.new(0.3), {TextSize = 18}):Play()
+    end)
+    
+    interact.MouseLeave:Connect(function()
+        TweenService:Create(btnFrame, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(25, 25, 30)}):Play()
+        TweenService:Create(stroke, TweenInfo.new(0.3), {Transparency = 0.7, Thickness = 1.5}):Play()
+        TweenService:Create(label, TweenInfo.new(0.3), {TextSize = 16}):Play()
+    end)
+
+    interact.MouseButton1Down:Connect(function()
+        btnFrame:TweenSize(UDim2.new(0.95, 0, 0, 52), "Out", "Quad", 0.1, true)
+    end)
+    
+    interact.MouseButton1Up:Connect(function()
+        btnFrame:TweenSize(UDim2.new(1, 0, 0, 55), "Out", "Quad", 0.1, true)
+        ChangeCharacter(realName)
+    end)
 end
 
 CreateStylishCharBtn("Mark", "Mark", Color3.fromRGB(255, 235, 59))

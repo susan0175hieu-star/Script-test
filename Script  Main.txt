@@ -66,14 +66,14 @@ local function Bind(signal, callback)
 end
 
 -- [[ GUI SETUP ]] --
-local ScreenGui = Create("ScreenGui", {    Name = GUI_NAME,    ResetOnSpawn = false})
+local ScreenGui = Create("ScreenGui", {    Name = GUI_NAME,    ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
 if not pcall(function() ScreenGui.Parent = game.CoreGui end) then
     ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
 local MainFrame = Create("Frame", {
-    Size = UDim2.new(0, 850, 0, 500),
-    Position = UDim2.new(0.5, -425, 0.5, -250),
+    Size = UDim2.new(0, 1050, 0, 580), -- Increased Height
+    Position = UDim2.new(0.5, -525, 0.5, -290), -- Re-Centered
     BackgroundColor3 = COLORS.BG,
     BorderSizePixel = 0,
     Active = true,
@@ -163,6 +163,127 @@ Bind(RejoinIconBtn.MouseButton1Click, function()
     game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
 end)
 
+-- Radio Button
+local RadioBtn = Create("TextButton", {
+    Text = "Radio",
+    Size = UDim2.new(0, 60, 1, 0),
+    Position = UDim2.new(1, -310, 0, 0),
+    BackgroundTransparency = 1,
+    TextColor3 = Color3.fromRGB(255, 100, 255),
+    Font = Enum.Font.GothamBold,
+    TextSize = 18,
+    Parent = TopBar
+})
+
+-- Radio Window
+local RadioFrame = Create("Frame", {
+    Size = UDim2.new(0, 250, 0, 130),
+    Position = UDim2.new(0.5, -125, 0.5, -65), -- Exact Center
+    BackgroundColor3 = COLORS.PANEL,
+    Visible = false,
+    Draggable = true,
+    Active = true,
+    ZIndex = 10, -- Bring to Front
+    Parent = ScreenGui -- Independent Window
+})
+CreateCorner(8, RadioFrame)
+CreateStroke(2, Color3.fromRGB(255, 100, 255), RadioFrame)
+
+-- Radio Title
+Create("TextLabel", {
+    Text = "Music Player",
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundTransparency = 1,
+    TextColor3 = COLORS.TEXT,
+    Font = Enum.Font.GothamBold,
+    TextSize = 16,
+    Parent = RadioFrame
+})
+
+-- ID Input
+local MusicInput = Create("TextBox", {
+    Text = "Sound ID Here",
+    Size = UDim2.new(0.9, 0, 0, 35),
+    Position = UDim2.new(0.05, 0, 0, 35),
+    BackgroundColor3 = COLORS.BG,
+    TextColor3 = COLORS.TEXT,
+    Font = Enum.Font.Gotham,
+    TextSize = 14,
+    Parent = RadioFrame
+})
+CreateCorner(6, MusicInput)
+
+-- Buttons Container
+local BtnContainer = Create("Frame", {
+    Size = UDim2.new(0.9, 0, 0, 35),
+    Position = UDim2.new(0.05, 0, 0, 80),
+    BackgroundTransparency = 1,
+    Parent = RadioFrame
+})
+
+local function CreateRadioBtn(text, color, pos, callback)
+    local btn = Create("TextButton", {
+        Text = text,
+        Size = UDim2.new(0.48, 0, 1, 0),
+        Position = pos,
+        BackgroundColor3 = color,
+        TextColor3 = COLORS.TEXT,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        Parent = BtnContainer
+    })
+    CreateCorner(6, btn)
+    Bind(btn.MouseButton1Click, callback)
+    return btn
+end
+
+local CurrentSound = nil
+
+CreateRadioBtn("Play", Color3.fromRGB(0, 200, 100), UDim2.new(0, 0, 0, 0), function()
+    if CurrentSound then CurrentSound:Destroy() end
+    
+    local id = MusicInput.Text
+    if tonumber(id) then id = "rbxassetid://" .. id end
+    
+    -- VALIDATION
+    local tempSound = Instance.new("Sound")
+    tempSound.Name = "ViltrumitesRadio"
+    tempSound.SoundId = id
+    tempSound.Volume = 2
+    tempSound.Looped = true
+    
+    local success, _ = pcall(function()
+        game:GetService("ContentProvider"):PreloadAsync({tempSound})
+    end)
+    
+    if not success or tempSound.TimeLength == 0 then
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Audio Warning",
+            Text = "Audio might be private/silent!",
+            Duration = 3
+        })
+        -- Proceeding anyway...
+    end
+
+    -- PLAYING IN SOUNDSERVICE (Better Stability)
+    CurrentSound = tempSound
+    CurrentSound.Parent = game:GetService("SoundService")
+    CurrentSound:Play()
+end)
+
+CreateRadioBtn("Stop", Color3.fromRGB(200, 50, 50), UDim2.new(0.52, 0, 0, 0), function()
+    if CurrentSound then 
+        CurrentSound:Stop()
+        CurrentSound:Destroy()
+        CurrentSound = nil
+    end
+end)
+
+Bind(RadioBtn.MouseButton1Click, function()
+    RadioFrame.Visible = not RadioFrame.Visible
+end)
+
+
 Bind(ResetBtn.MouseButton1Click, function()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.Health = 0
@@ -199,7 +320,7 @@ end)
 -- [[ LAYOUT ]] --
 -- Column 1: Characters
 local LeftPanel = Create("Frame", {
-    Size = UDim2.new(0.24, 0, 1, -180), 
+    Size = UDim2.new(0.24, 0, 1, -235), 
     Position = UDim2.new(0, 10, 0, 45),
     BackgroundColor3 = COLORS.PANEL,
     Parent = MainFrame
@@ -229,7 +350,7 @@ Create("UIPadding", { PaddingBottom = UDim.new(0, 10), PaddingTop = UDim.new(0, 
 
 -- Column 2: Players
 local MidPanel = Create("Frame", {
-    Size = UDim2.new(0.24, 0, 1, -180), 
+    Size = UDim2.new(0.24, 0, 1, -235), 
     Position = UDim2.new(0.26, 0, 0, 45),
     BackgroundColor3 = COLORS.PANEL,
     Parent = MainFrame
@@ -262,7 +383,7 @@ Create("UIListLayout", {
 
 -- Column 3: Combat
 local RightPanel = Create("Frame", {
-    Size = UDim2.new(0.48, 0, 1, -180),
+    Size = UDim2.new(0.48, 0, 1, -235),
     Position = UDim2.new(0.51, 0, 0, 45),
     BackgroundColor3 = COLORS.PANEL,
     Parent = MainFrame
@@ -681,11 +802,12 @@ Bind(RunService.Stepped, function()
                 -3.5 + (math.random() - 0.5) * 2, -- Jitter between -2.5 and -4.5 (UNDERGROUND/FEET)
                 (math.random() - 0.5) * 4
             )
-            local prediction = targetRoot.AssemblyLinearVelocity * 0.15
+            local prediction = targetRoot.AssemblyLinearVelocity * 0.2
+
             
             myRoot.CFrame = CFrame.new(targetRoot.Position + prediction + jitter) * CFrame.Angles(math.random(-10, 10), math.random(-10, 10), math.random(-10, 10))
             myRoot.AssemblyLinearVelocity = targetRoot.AssemblyLinearVelocity -- Match target velocity to stay with them
-            FlingBV.Velocity = Vector3.zero -- Ensure no drift from body movers
+            FlingBV.Velocity = targetRoot.AssemblyLinearVelocity -- ASSIST velocity instead of braking
             FlingBAV.AngularVelocity = Vector3.new(10000, 10000, 10000) -- Clean standard torque
             
             -- Spectate Update (in case target changed)
@@ -694,10 +816,10 @@ Bind(RunService.Stepped, function()
                 Cam.CameraSubject = targetRoot.Parent:FindFirstChild("Humanoid")
             end
             
-            -- Optional: Desync/Noclip
-            for _, part in pairs(LocalPlayer.Character:GetChildren()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
-            end
+            -- Optional: Desync/Noclip (DISABLED: Causes SmartBone Errors)
+            -- for _, part in pairs(LocalPlayer.Character:GetChildren()) do
+            --    if part:IsA("BasePart") then part.CanCollide = false end
+            -- end
         else
              -- Wait for respawn or valid state
              if FlingBAV then FlingBAV:Destroy(); FlingBAV = nil end
@@ -798,8 +920,8 @@ end)
 
 -- [[ BOTTOM PANEL: SETTINGS ]] --
 local BottomPanel = Create("Frame", {
-    Size = UDim2.new(1, -10, 0, 110),
-    Position = UDim2.new(0, 5, 1, -115),
+    Size = UDim2.new(1, -10, 0, 165), -- Increased Height for Fullbright
+    Position = UDim2.new(0, 5, 1, -170),
     BackgroundColor3 = COLORS.PANEL,
     Parent = MainFrame
 })
@@ -809,16 +931,24 @@ CreateCorner(6, BottomPanel)
 -- Speed Slider Section (Left Side of Bottom Panel)
 -- Speed Slider Section (Left Side of Bottom Panel)
 local SpeedSection = Create("Frame", {
-    Size = UDim2.new(0.5, -5, 1, 0), -- 50% Width
+    Size = UDim2.new(0.24, 0, 1, 0), -- 24% Width (Matches LeftPanel)
     Position = UDim2.new(0, 5, 0, 0),
+    BackgroundTransparency = 1,
+    Parent = BottomPanel
+})
+
+-- Middle Settings (New Section)
+local MidSettings = Create("Frame", {
+    Size = UDim2.new(0.24, 0, 1, 0), -- 24% Width (Matches MidPanel)
+    Position = UDim2.new(0.26, 0, 0, 0),
     BackgroundTransparency = 1,
     Parent = BottomPanel
 })
 
 -- Safety Section (Right Side of Bottom Panel)
 local SafetySection = Create("Frame", {
-    Size = UDim2.new(0.5, -10, 1, 0), -- 50% Width
-    Position = UDim2.new(0.5, 5, 0, 0),
+    Size = UDim2.new(0.48, 0, 1, 0), -- 48% Width (Matches RightPanel)
+    Position = UDim2.new(0.51, 0, 0, 0),
     BackgroundTransparency = 1,
     Parent = BottomPanel
 })
@@ -830,6 +960,14 @@ local SpeedLayout = Create("UIListLayout", {
     SortOrder = Enum.SortOrder.LayoutOrder,
     VerticalAlignment = Enum.VerticalAlignment.Top, -- Align to Top
     Parent = SpeedSection
+})
+
+local MidLayout = Create("UIListLayout", {
+    Padding = UDim.new(0, 5),
+    FillDirection = Enum.FillDirection.Vertical,
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    VerticalAlignment = Enum.VerticalAlignment.Top,
+    Parent = MidSettings
 })
 
 -- Auto Layout for Safety Section
@@ -847,6 +985,11 @@ local SpeedPadding = Create("UIPadding", {
     Parent = SpeedSection
 })
 
+local MidPadding = Create("UIPadding", {
+    PaddingTop = UDim.new(0, 15),
+    Parent = MidSettings
+})
+
 -- Padding for Top Offset (Safety)
 local SafetyPadding = Create("UIPadding", {
     PaddingTop = UDim.new(0, 15),
@@ -862,7 +1005,7 @@ local SpeedPadding = Create("UIPadding", {
 
 -- Init Speeds
 local minSpeed = 16
-local maxSpeed = 800
+local maxSpeed = 1000
 local CurrentWalkSpeed = 24
 local CurrentFlySpeed = 24
 local WalkSpeedEnabled = false -- Toggle State
@@ -1122,8 +1265,10 @@ local function CreateToggleRow(name, layoutOrder, parent, callback)
     return inner
 end
 
+createToggleRow = CreateToggleRow -- Alias if needed, but we use function directly
+
 -- Create No Ragdoll/Stun Toggles
-CreateToggleRow("No Ragdoll", 1, SafetySection, function(val) 
+CreateToggleRow("No Ragdoll", 1, MidSettings, function(val) 
     NoRagdollEnabled = val 
     if not val and LocalPlayer.Character then
         local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
@@ -1134,7 +1279,7 @@ CreateToggleRow("No Ragdoll", 1, SafetySection, function(val)
     end
 end)
 
-CreateToggleRow("No Stun", 2, SafetySection, function(val) 
+CreateToggleRow("No Stun", 2, MidSettings, function(val) 
     NoStunEnabled = val 
     if not val and LocalPlayer.Character then
         local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
@@ -1145,7 +1290,46 @@ CreateToggleRow("No Stun", 2, SafetySection, function(val)
     end
 end)
 
+-- Fullbright Logic
+local FullbrightEnabled = false
+local Lighting = game:GetService("Lighting")
+local OldBrightness = Lighting.Brightness
+local OldClockTime = Lighting.ClockTime
+local OldFogEnd = Lighting.FogEnd
+local OldGlobalShadows = Lighting.GlobalShadows
+local OldOutdoorAmbient = Lighting.OutdoorAmbient
 
+CreateToggleRow("Fullbright", 3, SafetySection, function(val)
+    FullbrightEnabled = val
+    if not val then
+        -- Restore
+        Lighting.Brightness = OldBrightness
+        Lighting.ClockTime = OldClockTime
+        Lighting.FogEnd = OldFogEnd
+        Lighting.GlobalShadows = OldGlobalShadows
+        Lighting.OutdoorAmbient = OldOutdoorAmbient
+    else
+        -- Save current (only once)
+        OldBrightness = Lighting.Brightness
+        OldClockTime = Lighting.ClockTime
+        OldFogEnd = Lighting.FogEnd
+        OldGlobalShadows = Lighting.GlobalShadows
+        OldOutdoorAmbient = Lighting.OutdoorAmbient
+    end
+end)
+
+
+local NPCESPEnabled = false
+CreateToggleRow("NPC ESP", 4, SafetySection, function(val)
+    NPCESPEnabled = val
+    if not val then
+        -- Cleanup NPC Highlight
+        for _, obj in pairs(workspace:GetChildren()) do
+            local hl = obj:FindFirstChild("ViltrumitesNPCESP")
+            if hl then hl:Destroy() end
+        end
+    end
+end)
 
 
 -- Consolidated Fly Toggle Logic (Use RenderStepped below)
@@ -1167,8 +1351,17 @@ UpdateFlyToggle()
 -- IsFlying variable handled above with the toggle
 -- Old UI removed
 
--- OPTIMIZED SPEED & FLY LOOP (Heartbeat)
+-- OPTIMIZED SPEED & FLY & LIGHTING LOOP (Heartbeat)
 Bind(RunService.RenderStepped, function()
+    -- 0. Fullbright Enforcement
+    if FullbrightEnabled then
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 14
+        Lighting.FogEnd = 100000
+        Lighting.GlobalShadows = false
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+    end
+
     local Char = LocalPlayer.Character
     local Hum = Char and Char:FindFirstChild("Humanoid")
     local Root = Char and Char:FindFirstChild("HumanoidRootPart")
@@ -1230,6 +1423,7 @@ end)
 
 -- [[ LOGIC: PLAYER LIST & ESP ]] --
 local function UpdateESP()
+    -- 1. Player ESP
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
             local hl = player.Character:FindFirstChild("ViltrumitesESP")
@@ -1246,6 +1440,28 @@ local function UpdateESP()
                 end
             else
                 if hl then hl:Destroy() end
+            end
+        end
+    end
+
+    -- 2. NPC ESP
+    if NPCESPEnabled then
+        for _, obj in pairs(workspace:GetChildren()) do
+            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") then
+                -- Check if it is a real player
+                if not Players:GetPlayerFromCharacter(obj) then
+                    local hl = obj:FindFirstChild("ViltrumitesNPCESP")
+                    if not hl then
+                         hl = Create("Highlight", {
+                            Name = "ViltrumitesNPCESP",
+                            FillColor = Color3.fromRGB(255, 170, 0), -- Orange for NPCs
+                            OutlineColor = Color3.fromRGB(255, 255, 255),
+                            FillTransparency = 0.6,
+                            OutlineTransparency = 0,
+                            Parent = obj
+                        })
+                    end
+                end
             end
         end
     end

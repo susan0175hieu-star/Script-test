@@ -28,6 +28,7 @@ if CoreGui:FindFirstChild("ExaminationGUI") then CoreGui.ExaminationGUI:Destroy(
 if LocalPlayer.PlayerGui:FindFirstChild("ExaminationGUI") then LocalPlayer.PlayerGui.ExaminationGUI:Destroy() end
 if CoreGui:FindFirstChild("ExaminationESP") then CoreGui.ExaminationESP:Destroy() end
 if CoreGui:FindFirstChild("InfectESP") then CoreGui.InfectESP:Destroy() end
+if CoreGui:FindFirstChild("AmmoESP") then CoreGui.AmmoESP:Destroy() end
 
 -- [ MAIN UI CREATION ]
 local ScreenGui = Instance.new("ScreenGui")
@@ -653,9 +654,9 @@ local function getClosestTarget()
         
         if not humanoid or not head or humanoid.Health <= 0 then return end
         
-        -- STRICT STATE CHECK (Ignore Ragdolls/Dead)
+        -- STRICT STATE CHECK (Ignore Dead)
         local state = humanoid:GetState()
-        if state == Enum.HumanoidStateType.Dead or state == Enum.HumanoidStateType.Physics then return end
+        if state == Enum.HumanoidStateType.Dead then return end
         
         -- STRICT SELF CHECK
         if character == LocalPlayer.Character then return end
@@ -962,14 +963,88 @@ createToggle(VisualsTab, "Infect ESP", false, function(state)
     end
 end)
 
+-- 3. Ammo ESP
+local ammoEspEnabled = false
+local ammoName = "Ammo"
+local ammoEspContainer = Instance.new("Folder")
+ammoEspContainer.Name = "AmmoESP"
+ammoEspContainer.Parent = CoreGui
+
+local function clearAmmoESP() ammoEspContainer:ClearAllChildren() end
+
+local function addAmmoESP(obj)
+    if not ammoEspEnabled then return end
+    if not obj:IsA("BasePart") and not obj:IsA("Model") then return end
+    
+    -- Check Name Match (Case Insensitive)
+    if not string.find(string.lower(obj.Name), string.lower(ammoName)) then return end
+    
+    -- Check Interactivity (Filter out props)
+    local isInteractive = false
+    if obj:FindFirstChildWhichIsA("ClickDetector", true) or 
+       obj:FindFirstChildWhichIsA("ProximityPrompt", true) or
+       obj:FindFirstChildWhichIsA("TouchTransmitter", true) then
+        isInteractive = true
+    end
+    
+    if not isInteractive then return end
+    
+    -- Check if already highlighted
+    if obj:FindFirstChild("AmmoHighlight") then return end
+    
+    local hl = Instance.new("Highlight")
+    hl.Name = "AmmoHighlight"
+    hl.Adornee = obj
+    hl.FillColor = Color3.fromRGB(255, 215, 0) -- Gold
+    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+    hl.FillTransparency = 0.5
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Parent = ammoEspContainer
+    
+    -- Link destruction
+    obj.AncestryChanged:Connect(function()
+        if not obj:IsDescendantOf(game) then hl:Destroy() end
+    end)
+end
+
+local function updateAmmoESP()
+    clearAmmoESP()
+    if not ammoEspEnabled then return end
+    
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        addAmmoESP(obj)
+    end
+end
+
+createToggleInput(VisualsTab, "Ammo ESP", "Ammo", false, function(val, state)
+    -- val is the string input (name), state is the toggle
+    local newName = tostring(val)
+    local needUpdate = (newName ~= ammoName) or (state ~= ammoEspEnabled)
+    
+    ammoName = newName
+    ammoEspEnabled = state
+    
+    if needUpdate and ammoEspEnabled then
+        updateAmmoESP()
+    elseif not ammoEspEnabled then
+        clearAmmoESP()
+    end
+end)
+
+workspace.DescendantAdded:Connect(function(obj)
+    if ammoEspEnabled then
+        task.wait(0.1)
+        addAmmoESP(obj)
+    end
+end)
+
 -- [ CLEANUP LOGIC ]
-CloseButton.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
+local function cleanupGUI()
     if fullBrightConnection then 
         fullBrightConnection:Disconnect() 
+        fullBrightConnection = nil
         Lighting.Brightness = 1
-        Lighting.ClockTime = 14
-        Lighting.FogEnd = 100000
         Lighting.GlobalShadows = true
         Lighting.OutdoorAmbient = Color3.fromRGB(127, 127, 127)
     end
@@ -979,17 +1054,28 @@ CloseButton.MouseButton1Click:Connect(function()
     aimEnabled = false
     flyEnabled = false
     
+    
     if espContainer then espContainer:Destroy() end
     if infectEspContainer then infectEspContainer:Destroy() end
+    if ammoEspContainer then ammoEspContainer:Destroy() end
     
-    clearInfectESP() -- Explicitly remove highlights from models
-
-    
+    clearInfectESP()
+    clearAmmoESP()
     stopFly()
     
-    -- Restore WalkSpeed
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = 16
+    end
+end
+
+CloseButton.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+    cleanupGUI()
+end)
+
+ScreenGui.AncestryChanged:Connect(function()
+    if not ScreenGui:IsDescendantOf(game) then
+        cleanupGUI()
     end
 end)
 
@@ -1007,5 +1093,3 @@ UserInputService.InputBegan:Connect(function(input, gpe)
         end
     end
 end)
-
-

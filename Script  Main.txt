@@ -911,14 +911,16 @@ local function CreateStylishCharBtn(text, realName, themeColor)
         Parent = btnFrame
     })
 
-    -- Character Icon Placeholder / Indicator
+    -- Character Status Dot
     local indicator = Create("Frame", {
-        Size = UDim2.new(0, 4, 0, 20),
-        Position = UDim2.new(1, -12, 0.5, -10),
+        Size = UDim2.new(0, 8, 0, 8),
+        Position = UDim2.new(1, -15, 0.5, -4),
         BackgroundColor3 = themeColor,
         Parent = btnFrame
     })
-    CreateCorner(2, indicator)
+    CreateCorner(8, indicator)
+    local indicatorStroke = CreateStroke(1, Color3.new(1,1,1), indicator)
+    indicatorStroke.Transparency = 0.5
 
     -- Interaction Overlay
     local interact = Create("TextButton", {

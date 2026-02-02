@@ -657,6 +657,16 @@ local function getClosestTarget()
         -- STRICT STATE CHECK (Ignore Dead)
         local state = humanoid:GetState()
         if state == Enum.HumanoidStateType.Dead then return end
+
+        -- NECK CHECK (Filter Dead Ragdolls)
+        -- Stunned enemies (Physics state) usually keep joints, dead ones loose them.
+        if state == Enum.HumanoidStateType.Physics then
+            local neck = head:FindFirstChild("Neck") or 
+                         (character:FindFirstChild("Torso") and character.Torso:FindFirstChild("Neck")) or
+                         (character:FindFirstChild("UpperTorso") and character.UpperTorso:FindFirstChild("Neck"))
+            
+            if not neck then return end -- No neck = Dead Ragdoll
+        end
         
         -- STRICT SELF CHECK
         if character == LocalPlayer.Character then return end
@@ -828,6 +838,14 @@ local function manageInfectHighlights()
                 potentialEspTargets[model] = nil 
                 continue 
             end
+
+            -- STRICT FAILSAFE: Remove Self
+            if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then
+                potentialEspTargets[model] = nil
+                local highlight = model:FindFirstChild("InfectHighlight")
+                if highlight then highlight:Destroy() end
+                continue
+            end
             
             local root = model:FindFirstChild("HumanoidRootPart")
             local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -841,6 +859,15 @@ local function manageInfectHighlights()
 
             if root then
                 local dist = (root.Position - myPos).Magnitude
+                
+                -- Distance Sanity Check (Self is always 0)
+                if dist < 2 then 
+                     potentialEspTargets[model] = nil 
+                     local highlight = model:FindFirstChild("InfectHighlight")
+                     if highlight then highlight:Destroy() end
+                     continue
+                end
+
                 local highlight = model:FindFirstChild("InfectHighlight")
                 
                 if dist < 150 then -- Only highlight if closer than 150 studs
@@ -883,6 +910,9 @@ local function addInfectESP(model)
     if not root then return end
 
     local function isValidEnemy()
+        -- 0. Strict Self Check
+        if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
+
         -- 1. Has weapon? ALWAYS Valid.
         if model:FindFirstChildOfClass("Tool") then return true end
         -- 2. Anchored? INVALID (Statue) until unanchored.

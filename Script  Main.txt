@@ -960,6 +960,18 @@ CreateStylishCharBtn("Atom Mistress", "AtomMistress", Color3.fromRGB(255, 150, 2
 
 local function FullCleanup()
     for _, con in pairs(ConnectionTable) do con:Disconnect() end
+    -- Cleanup Global ESPs
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Character then
+            local hl = player.Character:FindFirstChild("ViltrumitesESP") or player.Character:FindFirstChild("SelfFlingESP")
+            if hl then hl:Destroy() end
+        end
+    end
+    -- Cleanup Workspace (NPC ESP if any left)
+    for _, obj in pairs(workspace:GetChildren()) do
+        local hl = obj:FindFirstChild("ViltrumitesNPCESP")
+        if hl then hl:Destroy() end
+    end
     if ScreenGui then ScreenGui:Destroy() end
     if OpenBtn then OpenBtn:Destroy() end
     _G[SCRIPT_ID] = nil

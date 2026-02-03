@@ -10,6 +10,17 @@ local TeleportService = game:GetService("TeleportService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
+-- [ SETTINGS ]
+local walkSpeed = 24
+local flySpeed = 50
+local flyEnabled = false
+local noclipEnabled = false
+local infiniteJumpEnabled = false
+local infectEspEnabled = false
+local ammoEspEnabled = false
+local debugMode = false
+local validEnemies = {}
+
 -- [ UI CONFIGURATION ]
 local RESX, RESY = 900, 300 -- Compact Height for 3 columns
 local THEME = {
@@ -94,6 +105,12 @@ Title.BackgroundTransparency = 1
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
+local TitleStroke = Instance.new("UIStroke")
+TitleStroke.Thickness = 1.2
+TitleStroke.Color = Color3.fromRGB(0, 0, 0)
+TitleStroke.Transparency = 0.5
+TitleStroke.Parent = Title
+
 -- [ HEADER BUTTONS ]
 
 -- 1. Rejoin Button (Center-Left)
@@ -105,9 +122,14 @@ RejoinButton.AnchorPoint = Vector2.new(1, 0.5)
 RejoinButton.Position = UDim2.new(0.5, -5, 0.5, 0)
 RejoinButton.BackgroundTransparency = 1
 RejoinButton.TextColor3 = THEME.Description
-RejoinButton.TextSize = 18
 RejoinButton.Font = Enum.Font.GothamBold
+RejoinButton.TextSize = 16
 RejoinButton.Parent = Header
+
+local RejoinStroke = Instance.new("UIStroke")
+RejoinStroke.Thickness = 0.5
+RejoinStroke.Color = Color3.fromRGB(0, 0, 0)
+RejoinStroke.Parent = RejoinButton
 
 RejoinButton.MouseButton1Click:Connect(function()
     if #Players:GetPlayers() <= 1 then
@@ -128,9 +150,14 @@ ResetButton.AnchorPoint = Vector2.new(0, 0.5)
 ResetButton.Position = UDim2.new(0.5, 5, 0.5, 0)
 ResetButton.BackgroundTransparency = 1
 ResetButton.TextColor3 = THEME.Description
-ResetButton.TextSize = 18
+ResetButton.TextSize = 16
 ResetButton.Font = Enum.Font.GothamBold
 ResetButton.Parent = Header
+
+local ResetStroke = Instance.new("UIStroke")
+ResetStroke.Thickness = 0.5
+ResetStroke.Color = Color3.fromRGB(0, 0, 0)
+ResetStroke.Parent = ResetButton
 
 ResetButton.MouseButton1Click:Connect(function()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -172,6 +199,11 @@ MinButton.TextSize = 24
 MinButton.Font = Enum.Font.GothamBold
 MinButton.Parent = Header
 
+local MinStroke = Instance.new("UIStroke")
+MinStroke.Thickness = 0.5
+MinStroke.Color = Color3.fromRGB(0, 0, 0)
+MinStroke.Parent = MinButton
+
 MinButton.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
     OpenButton.Visible = true
@@ -188,6 +220,11 @@ CloseButton.TextColor3 = THEME.Description
 CloseButton.TextSize = 18
 CloseButton.Font = Enum.Font.GothamBold
 CloseButton.Parent = Header
+
+local CloseStroke = Instance.new("UIStroke")
+CloseStroke.Thickness = 0.5
+CloseStroke.Color = Color3.fromRGB(0, 0, 0)
+CloseStroke.Parent = CloseButton
 
 -- [ TABS REMOVED ]
 
@@ -266,6 +303,12 @@ local function createColumn(name)
     Header.TextSize = 14
     Header.Parent = Column
 
+local HeaderStroke = Instance.new("UIStroke")
+HeaderStroke.Thickness = 1
+HeaderStroke.Color = Color3.fromRGB(0, 0, 0)
+HeaderStroke.Transparency = 0.8
+HeaderStroke.Parent = Header
+
     -- Scroll Area
     local Page = Instance.new("ScrollingFrame")
     Page.Name = "Page"
@@ -313,6 +356,12 @@ local function createToggle(page, text, default, callback)
     Label.TextSize = 14
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Frame
+
+    local LabelStroke = Instance.new("UIStroke")
+    LabelStroke.Thickness = 0.5
+    LabelStroke.Color = Color3.fromRGB(0, 0, 0)
+    LabelStroke.Transparency = 0.7
+    LabelStroke.Parent = Label
     
     local Button = Instance.new("TextButton")
     Button.Text = ""
@@ -371,6 +420,12 @@ local function createToggleInput(page, text, defaultVal, defaultToggle, callback
     Label.TextSize = 14
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Frame
+
+    local LabelStroke = Instance.new("UIStroke")
+    LabelStroke.Thickness = 0.5
+    LabelStroke.Color = Color3.fromRGB(0, 0, 0)
+    LabelStroke.Transparency = 0.7
+    LabelStroke.Parent = Label
     
     -- Toggle Button
     local ToggleButton = Instance.new("TextButton")
@@ -404,6 +459,12 @@ local function createToggleInput(page, text, defaultVal, defaultToggle, callback
     InputBox.Font = Enum.Font.Gotham
     InputBox.TextSize = 14
     InputBox.Parent = Frame
+
+    local BoxStroke = Instance.new("UIStroke")
+    BoxStroke.Thickness = 1
+    BoxStroke.Color = Color3.fromRGB(60, 60, 60)
+    BoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    BoxStroke.Parent = InputBox
     
     local BoxCorner = Instance.new("UICorner")
     BoxCorner.CornerRadius = UDim.new(0, 4)
@@ -429,15 +490,25 @@ local function createToggleInput(page, text, defaultVal, defaultToggle, callback
         trigger()
     end)
     
-    InputBox.FocusLost:Connect(function()
-        local num = tonumber(InputBox.Text)
-        if num then
-            currentVal = num
-            trigger()
-        else
-            InputBox.Text = tostring(currentVal)
+    local function set(val, toggle)
+        if val ~= nil then
+            currentVal = val
+            InputBox.Text = tostring(val)
         end
-    end)
+        if toggle ~= nil then
+            isToggled = toggle
+            if isToggled then
+                ToggleButton.BackgroundColor3 = THEME.Accent
+                Circle.Position = UDim2.new(1, -18, 0.5, -8)
+            else
+                ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                Circle.Position = UDim2.new(0, 2, 0.5, -8)
+            end
+        end
+        trigger()
+    end
+    
+    return set
 end
 
 
@@ -454,20 +525,24 @@ local VisualsTab = createColumn("Visuals")
 
 -- 1. WalkSpeed
 local wsConnection = nil
-createToggleInput(LocalTab, "WalkSpeed", 16, false, function(val, state)
+createToggleInput(LocalTab, "WalkSpeed", 24, false, function(val, state)
     if wsConnection then wsConnection:Disconnect() wsConnection = nil end
     
     if state then
+        walkSpeed = val -- UPDATE GLOBAL VARIABLE
         if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
             LocalPlayer.Character.Humanoid.WalkSpeed = val
         end
         wsConnection = RunService.RenderStepped:Connect(function()
-             if not ScreenGui.Parent then -- Suicide check
-                 if wsConnection then wsConnection:Disconnect() end
-                 return
-             end
-             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                LocalPlayer.Character.Humanoid.WalkSpeed = val
+            if not ScreenGui.Parent then -- Suicide check
+                if wsConnection then wsConnection:Disconnect() end
+                return
+            end
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                -- Only enforce WalkSpeed if NOT flying (Flying handles speed separately to avoid camera tilt)
+                if not flyEnabled then
+                    LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed
+                end
             end
         end)
     else
@@ -487,6 +562,7 @@ local function stopFly()
     if flyBodyVelocity then flyBodyVelocity:Destroy() flyBodyVelocity = nil end
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.PlatformStand = false
+        LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed -- Restore Speed
     end
 end
 
@@ -511,13 +587,15 @@ local function startFly()
     flyBodyVelocity.Parent = hrp
     
     humanoid.PlatformStand = true
+    humanoid.WalkSpeed = 16 -- Reset to default to prevent Camera Tilt from game scripts
     
     task.spawn(function()
         while flyEnabled and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 do
             if not ScreenGui.Parent then stopFly() break end
             if not flyBodyGyro or not flyBodyGyro.Parent then break end
             
-            flyBodyGyro.cframe = Camera.CFrame
+            -- Lock Gyro to Camera LookVector but Keep Upright (Removes Tilt/Roll)
+            flyBodyGyro.cframe = CFrame.lookAt(hrp.Position, hrp.Position + Camera.CFrame.LookVector)
             
             local vel = Vector3.new()
             if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + Camera.CFrame.LookVector * flySpeed end
@@ -533,10 +611,18 @@ local function startFly()
     end)
 end
 
-createToggleInput(LocalTab, "Fly Mode", 50, false, function(val, state)
+local toggleFly = createToggleInput(LocalTab, "Fly Mode (F)", 50, false, function(val, state)
     flySpeed = val
     flyEnabled = state
     if flyEnabled then startFly() else stopFly() end
+end)
+
+-- Keybind for Fly (F)
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.F then
+        toggleFly(nil, not flyEnabled)
+    end
 end)
 
 -- 3. FullBright
@@ -545,8 +631,8 @@ createToggle(VisualsTab, "FullBright", false, function(state)
     if state then
         fullBrightConnection = RunService.RenderStepped:Connect(function()
             if not ScreenGui.Parent then
-                 if fullBrightConnection then fullBrightConnection:Disconnect() end
-                 return
+                if fullBrightConnection then fullBrightConnection:Disconnect() end
+                return
             end
             Lighting.Brightness = 2
             Lighting.ClockTime = 14
@@ -572,8 +658,8 @@ createToggle(LocalTab, "Noclip", false, function(state)
     if state then
         noclipConnection = RunService.Stepped:Connect(function()
             if not ScreenGui.Parent then -- Suicide check
-                 if noclipConnection then noclipConnection:Disconnect() end
-                 return
+                if noclipConnection then noclipConnection:Disconnect() end
+                return
             end
             
             local char = LocalPlayer.Character
@@ -591,12 +677,26 @@ createToggle(LocalTab, "Noclip", false, function(state)
         if char then
             for _, part in ipairs(char:GetDescendants()) do
                 if part:IsA("BasePart") then
-                    part.CanCollide = true
+                    -- WHITELIST: Only restore collision for CORE parts
+                    -- Restoring collision on limbs (Arms/Legs) causes FLING due to self-collision
+                    local restoreList = {
+                        ["Head"] = true,
+                        ["HumanoidRootPart"] = true,
+                        ["Torso"] = true,
+                        ["UpperTorso"] = true,
+                        ["LowerTorso"] = true
+                    }
+                    if restoreList[part.Name] then
+                        part.CanCollide = true
+                    end
                 end
             end
         end
     end
 end)
+
+
+
 
 
 -- ====================
@@ -605,8 +705,9 @@ end)
 
 local aimEnabled = false
 local aimKey = Enum.UserInputType.MouseButton2
-local aimFOV = 150
+local aimFOV = 200
 local aimSmoothness = 0.6
+local aimBotDebug = false
 local validEnemies = {}
 
 -- HELPER: Weapon Detection (Tools + Custom Names)
@@ -614,7 +715,16 @@ local function hasWeapon(char)
     if not char then return false end
     
     -- 0. BOSS NAME CHECK
-    if string.find(string.lower(char.Name), "chimera") then return true, "BossName" end
+    local charName = string.lower(char.Name)
+    if string.find(charName, "chimera") or string.find(charName, "boss") then return true, "BossName" end
+
+    -- 0.1 BOSS WEAPON CHECK (Priority)
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("BasePart") or child:IsA("Model") then
+            local n = string.lower(child.Name)
+            if string.find(n, "claw") or string.find(n, "talon") or string.find(n, "sting") then return true, "BossPart" end
+        end
+    end
 
     -- 1. Standard Tool
     local tool = char:FindFirstChildOfClass("Tool")
@@ -629,23 +739,24 @@ local function hasWeapon(char)
         "sniper", "awp", "barrett",
         "bow", "crossbow",
         "sword", "katana", "saber",
-        "claw", "talon" -- BOSS KEYWORDS
+        "claw", "talon", "sting", -- BOSS KEYWORDS
+        "shield", "guard", "defense" -- SHIELD MONSTER KEYWORDS
     }
 
     -- Recursive Check (GetDescendants) to find nested weapons
     for _, child in ipairs(char:GetDescendants()) do
         if child:IsA("BasePart") or child:IsA("Model") then
-             local name = string.lower(child.Name)
-             
-             -- BLACKLIST: Ignore holsters, pouches, bags
-             if string.find(name, "holster") or string.find(name, "pouch") or string.find(name, "bag") or string.find(name, "sheath") then
-                 -- Skip this part (Safe)
-             else
-                 -- WHITELIST CHECK
-                 for _, keyword in ipairs(weaponKeywords) do
-                     if string.find(name, keyword) then return true, child.Name end
-                 end
-             end
+            local name = string.lower(child.Name)
+            
+            -- BLACKLIST: Ignore holsters, pouches, bags
+            if string.find(name, "holster") or string.find(name, "pouch") or string.find(name, "bag") or string.find(name, "sheath") then
+                -- Skip this part (Safe)
+            else
+                -- WHITELIST CHECK
+                for _, keyword in ipairs(weaponKeywords) do
+                    if string.find(name, keyword) then return true, child.Name end
+                end
+            end
         end
     end
     return false
@@ -655,6 +766,7 @@ end
 local function addEnemy(model)
     if model == LocalPlayer.Character then return end
     if Players:GetPlayerFromCharacter(model) then return end
+    
     if not model:FindFirstChildOfClass("Humanoid") then return end
     
     -- BLACKLIST (Friendlies)
@@ -683,8 +795,8 @@ local function addEnemy(model)
     
     model.AncestryChanged:Connect(function()
         if not model:IsDescendantOf(game) then
-             local index = table.find(validEnemies, model)
-             if index then table.remove(validEnemies, index) end
+            local index = table.find(validEnemies, model)
+            if index then table.remove(validEnemies, index) end
         end
     end)
     local hum = model:FindFirstChildOfClass("Humanoid")
@@ -707,145 +819,209 @@ workspace.DescendantAdded:Connect(function(descendant)
     end
 end)
 
+-- Helper check replaced by robust version above
+
+local lastTarget = nil -- Store last valid target for locking
+local lastTargetTime = 0
+local lastLoggedTarget = nil -- Store last NPC printed in debug logs
+
+-- 2. Aim Logic
 -- 2. Aim Logic
 local function getClosestTarget()
     local closest = nil
     local shortest3DDistance = math.huge
     local mousePos = UserInputService:GetMouseLocation()
+    local lockedPosition = nil
     
+    local debugTarget = nil
+    local shortestMouseDist = 200 -- Only debug if within 200px of mouse
+    
+    -- 1. PRE-PASS: Find NPC closest to mouse for debugging
+    if aimBotDebug then
+        for _, enemy in ipairs(validEnemies) do
+            if enemy and enemy.Parent and enemy:FindFirstChild("HumanoidRootPart") then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(enemy.HumanoidRootPart.Position)
+                if onScreen then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if dist < shortestMouseDist then
+                        shortestMouseDist = dist
+                        debugTarget = enemy
+                    end
+                end
+            end
+        end
+    end
+
+    local lastDebugPrint = 0
+    local lastDebugLog = 0
     local function checkTarget(character)
         if not character or character == LocalPlayer.Character then return end
         
+        local isHovered = (character == debugTarget)
+        local function dLog(msg)
+            if aimBotDebug and isHovered then
+                -- Print ONLY ONCE when target changes
+                if lastLoggedTarget ~= character then
+                    print("-------------------------------------------")
+                    print(string.format("[AIM DEBUG] Target Found: %s", character.Name))
+                    print(string.format("[AIM DEBUG] Info: %s", msg))
+                    lastLoggedTarget = character
+                end
+            end
+        end
+
+        -- 1. PRE-FILTER: Distance
+        local root = character:FindFirstChild("HumanoidRootPart")
+        if not root then 
+            dLog("Ignored - No RootPart")
+            return 
+        end
+        
+        local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+        local dist3D = (myPos - root.Position).Magnitude
+        
+        local isBoss = string.find(string.lower(character.Name), "chimera") or string.find(string.lower(character.Name), "boss")
+        local maxRange = isBoss and 2000 or 300
+        
+        if dist3D > maxRange then 
+            dLog("Ignored - Out of Range (" .. math.floor(dist3D) .. " studs)")
+            return 
+        end
+        
+        -- 2. PRE-FILTER: On Screen & FOV
+        local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
+        if not onScreen then 
+            dLog("Ignored - Off Screen")
+            return 
+        end
+        
+        if not lastTarget then
+            local mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+            if mouseDist > aimFOV then 
+                dLog("Ignored - Outside FOV (Dist: " .. math.floor(mouseDist) .. ")")
+                return 
+            end
+        end
+
+        -- 3. STATE CHECKS
+        local humanoid = character:FindFirstChild("Humanoid")
+        if not humanoid then
+            dLog("Ignored - No Humanoid")
+            return
+        end
+        if humanoid.Health <= 0 then 
+            dLog("Ignored - Dead")
+            return 
+        end
+        
         -- BLACKLIST (Friendlies)
         local n = string.lower(character.Name)
-        if n == "npc" or string.find(n, "hizoimviewmodel") or string.find(n, "viewmodel") then return end
-
-        if character:FindFirstChildOfClass("ForceField") then return end
-        
-        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-        
-        local humanoid = character:FindFirstChild("Humanoid")
-        local head = character:FindFirstChild("Head")
-        
-        if not humanoid or not head or humanoid.Health <= 0 then return end
-        
-        -- STRICT STATE CHECK (Ignore Dead)
-        local state = humanoid:GetState()
-        if state == Enum.HumanoidStateType.Dead then return end
-
-        -- STATUE/PROP CHECK (Sit/PlatformStand)
-        -- Ignore unarmed entities that are sitting or platform standing (likely props/statues)
-        if (humanoid.Sit or humanoid.PlatformStand) and not hasWeapon(character) then return end
-
-        -- GLOBAL STATIONARY CHECK (Sleeping/Fake Corpse/FallingDown)
-        -- If moving < 0.5 stud/s AND has no weapon => Ignore regardless of state
-        local root = character:FindFirstChild("HumanoidRootPart")
-        if root then
-            local vel = root.Velocity.Magnitude
-            local isArmed = hasWeapon(character)
-            if vel < 0.5 and not isArmed then return end
-        end
-
-        -- NECK CHECK (Filter Dead Ragdolls)
-        -- Stunned enemies (Physics state) usually keep joints, dead ones loose them.
-        if state == Enum.HumanoidStateType.Physics then
-            local neck = head:FindFirstChild("Neck") or 
-                         (character:FindFirstChild("Torso") and character.Torso:FindFirstChild("Neck")) or
-                         (character:FindFirstChild("UpperTorso") and character.UpperTorso:FindFirstChild("Neck"))
-            
-            -- ROOTJOINT CHECK (Double verification for ragdolls)
-            local rootJoint = (character:FindFirstChild("LowerTorso") and character.LowerTorso:FindFirstChild("Root")) or
-                              (character:FindFirstChild("HumanoidRootPart") and character.HumanoidRootPart:FindFirstChild("RootJoint"))
-            
-            if not neck or not rootJoint then return end -- Missing joints = Dead/Ragdoll
+        if n == "npc" or string.find(n, "hizoimviewmodel") or string.find(n, "viewmodel") then 
+            dLog("Ignored - Blacklisted Name")
+            return 
         end
         
-        -- STRICT SELF CHECK
-        if character == LocalPlayer.Character then return end
-        
-        -- VISIBILITY CHECK (Multi-Point)
+        -- 4. VISIBILITY CHECK (Tiered)
         local origin = Camera.CFrame.Position
         local rayParams = RaycastParams.new()
-        rayParams.FilterDescendantsInstances = {LocalPlayer.Character, character, Camera}
+        rayParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
         rayParams.FilterType = Enum.RaycastFilterType.Exclude
         rayParams.IgnoreWater = true
         
-        local isVisible = false
-        
-        -- Helper to check a specific part
-        -- Helper to check a specific part with Smart Penetration
-        local function isPartVisible(part)
-            local direction = (part.Position - origin)
+        local function isPartVisible(part, offset, depth)
+            if not part then return false end
+            depth = depth or 0
+            if depth > 5 then return false end
+
+            local tPos = offset and (part.Position + offset) or part.Position
+            local direction = (tPos - origin)
             
-            -- Recursively cast to penetrate transparent/non-collidable parts
-            local sanity = 0
-            while sanity < 10 do -- Limit penetration depth
-                sanity = sanity + 1
-                local result = workspace:Raycast(origin, direction, rayParams)
-                if not result then return true end -- Reached destination
-                
-                -- Hit Obstacle. Check if penetrable.
-                -- 1. High Transparency (Glass/Invisible Wall)
-                -- 2. CanCollide = false (Phantom/Trigger)
-                if result.Instance.Transparency > 0.5 or not result.Instance.CanCollide then
-                    local filter = rayParams.FilterDescendantsInstances
-                    table.insert(filter, result.Instance)
-                    rayParams.FilterDescendantsInstances = filter
-                    -- Continue loop
-                else
-                    return false -- Solid Wall
+            local result = workspace:Raycast(origin, direction, rayParams)
+            if not result then return true, tPos end 
+            
+            local hit = result.Instance
+            
+            -- RIG CHECK: Is this part welded to the character? (Handles guns/hats in separate folders)
+            local isPartOfChar = hit:IsDescendantOf(character)
+            if not isPartOfChar then
+                for _, joint in ipairs(hit:GetJoints()) do
+                    if joint:IsA("JointInstance") then
+                        if (joint.Part0 and joint.Part0:IsDescendantOf(character)) or 
+                           (joint.Part1 and joint.Part1:IsDescendantOf(character)) then
+                            isPartOfChar = true
+                            break
+                        end
+                    end
                 end
             end
-            return false -- Too many layers
+
+            if isPartOfChar or hit == part then
+                return true, tPos 
+            end
+            
+            -- PENETRATION LOGIC: Only ignore transparency/non-collidable now
+            if hit.Transparency > 0.5 or not hit.CanCollide then
+                local oldFilter = rayParams.FilterDescendantsInstances
+                table.insert(oldFilter, hit)
+                rayParams.FilterDescendantsInstances = oldFilter
+                return isPartVisible(part, offset, depth + 1) 
+            end
+            
+            dLog("Blocked by: " .. hit.Name)
+            return false 
         end
         
-        -- SMART AIM: Scan Priority List for first visible part
-        local targetPart = nil
-        local priorityList = {
-            "Head", "UpperTorso", "HumanoidRootPart", "Torso", "LowerTorso", -- Vitals
-            "RightUpperArm", "LeftUpperArm", "Right Arm", "Left Arm",        -- Arms
-            "RightUpperLeg", "LeftUpperLeg", "Right Leg", "Left Leg"         -- Legs
-        }
+        local currentTargetPart = nil
+        local currentLockedPos = nil
         
-        -- 1. Check Priority Parts
-        for _, name in ipairs(priorityList) do
+        -- Primary Parts
+        local primaryParts = {"Head", "UpperTorso", "HumanoidRootPart"}
+        for _, name in ipairs(primaryParts) do
             local part = character:FindFirstChild(name)
-            if part and isPartVisible(part) then
-                targetPart = part
+            local visible, pos = isPartVisible(part)
+            if visible then
+                currentTargetPart, currentLockedPos = part, pos
                 break
             end
         end
         
-        -- 2. Fallback: Any visible part
-        if not targetPart then
-             for _, part in ipairs(character:GetChildren()) do
-                if part:IsA("BasePart") and part.Transparency < 1 and part ~= head and isPartVisible(part) then
-                    targetPart = part
+        if not currentTargetPart then
+            local detailParts = {"RightUpperArm", "LeftUpperArm", "RightLowerArm", "LeftLowerArm"}
+            for _, name in ipairs(detailParts) do
+                local part = character:FindFirstChild(name)
+                if isPartVisible(part) then
+                    currentTargetPart, currentLockedPos = part, part.Position
                     break
                 end
-             end
+            end
         end
-        
-        if not targetPart then return end -- No part visible
-        
-        -- DISTANCE CALCULATION
-        local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-        local targetPos = targetPart.Position -- Use the visible part position
-        local dist3D = (myPos - targetPos).Magnitude
-        
-        if dist3D < 5 then return end -- Too close/inside
-        if dist3D > 300 then return end -- Max Range
-        
-        if dist3D < shortest3DDistance then
-             closest = targetPart -- Aim at the specific visible part
-             shortest3DDistance = dist3D
+
+        if currentTargetPart then
+            dLog("Target Valid!")
+            if dist3D < shortest3DDistance then
+                closest = currentTargetPart
+                lockedPosition = currentLockedPos
+                shortest3DDistance = dist3D
+                lastTarget = character
+            end
         end
     end
+
+    -- PRIORITIZE LAST TARGET
+    if lastTarget and lastTarget.Parent and lastTarget:FindFirstChild("Humanoid") then
+        if lastTarget.Humanoid.Health > 0 then
+            checkTarget(lastTarget)
+            if closest then return closest, lockedPosition end
+        end
+    end
+    
+    lastTarget = nil
 
     for _, enemy in ipairs(validEnemies) do
         checkTarget(enemy)
     end
-    return closest
+    
+    return closest, lockedPosition
 end
 
 -- 3. Aim Loop
@@ -854,23 +1030,33 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     if input.UserInputType == aimKey then isAiming = true end
 end)
 UserInputService.InputEnded:Connect(function(input, gpe)
-    if input.UserInputType == aimKey then isAiming = false end
+    if input.UserInputType == aimKey then 
+        isAiming = false 
+        lastTarget = nil -- Reset target when releasing mouse
+        lastLoggedTarget = nil -- Reset debug log state to allow re-logging same NPC
+    end
 end)
 
 RunService.RenderStepped:Connect(function()
     if not ScreenGui.Parent then return end
-    if aimEnabled and isAiming then
-        local targetHead = getClosestTarget()
-        if targetHead then
-            local currentCF = Camera.CFrame
-            local targetCF = CFrame.new(currentCF.Position, targetHead.Position)
-            Camera.CFrame = currentCF:Lerp(targetCF, aimSmoothness)
+    if aimEnabled then
+        if isAiming then
+            local targetPart, targetPos = getClosestTarget()
+            if targetPart and targetPos then
+                local currentCF = Camera.CFrame
+                local targetCF = CFrame.new(currentCF.Position, targetPos)
+                Camera.CFrame = currentCF:Lerp(targetCF, aimSmoothness)
+            end
         end
     end
 end)
 
 createToggle(CombatTab, "Aim Bot", false, function(state)
     aimEnabled = state
+end)
+
+createToggle(CombatTab, "Aim Debug (F9)", false, function(state)
+    aimBotDebug = state
 end)
 
 
@@ -918,27 +1104,27 @@ local function managePlayerHighlights()
             local dist = (root.Position - myPos).Magnitude
             local hl = char:FindFirstChild("ESPHighlight")
             
-            -- SLOT MANAGEMENT: Only highlight if < 400 studs
-            if dist < 400 then
-                 if not hl then
+            -- SLOT MANAGEMENT: Only highlight if < 150 studs
+            if dist < 150 then
+                if not hl then
                     hl = Instance.new("Highlight")
                     hl.Name = "ESPHighlight"
                     hl.Adornee = char
-                    hl.FillColor = Color3.fromRGB(0, 255, 255)
-                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                    hl.FillTransparency = 0.85 
+                    hl.FillColor = Color3.fromRGB(0, 150, 255) -- Blue
+                    hl.OutlineColor = Color3.fromRGB(0, 150, 255) -- Blue Outline
+                    hl.FillTransparency = 1 -- Outline only
                     hl.OutlineTransparency = 0
                     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Parent = char -- Parent to Model for better cleanup
+                    hl.Parent = char 
                     
                     -- Failsafe Cleanup
                     char.AncestryChanged:Connect(function()
                         if not char:IsDescendantOf(game) and hl then hl:Destroy() end
                     end)
-                 end
+                end
             else
-                 -- Too far, free up the slot for Bosses/Nearby Enemies
-                 if hl then hl:Destroy() end
+                -- Too far, free up the slot for Bosses/Nearby Enemies
+                if hl then hl:Destroy() end
             end
         end
         task.wait(0.2)
@@ -985,10 +1171,44 @@ local function clearInfectESP()
     -- Manual Cleanup because Highlights are now parented to Models
     for model, _ in pairs(potentialEspTargets) do
         if model and model:FindFirstChild("InfectHighlight") then
-             model.InfectHighlight:Destroy()
+            model.InfectHighlight:Destroy()
         end
     end
     potentialEspTargets = {}
+end
+
+-- HELPER: Boss Detection for ESP/Aim
+local function isBossEntity(model)
+    if not model then return false end
+    local n = string.lower(model.Name)
+    if string.find(n, "chimera") or string.find(n, "boss") then return true end
+    
+    -- Check for special boss parts (Claw/Talon)
+    for _, child in ipairs(model:GetChildren()) do
+        if child:IsA("BasePart") or child:IsA("Model") then
+            local cn = string.lower(child.Name)
+            if string.find(cn, "claw") or string.find(cn, "talon") then return true end
+        end
+    end
+    return false
+end
+
+-- HELPER: Elite Enemy Detection (Shotgun, Chainsaw, etc.)
+local function isEliteEntity(model)
+    if not model then return false end
+    local n = string.lower(model.Name)
+    if string.find(n, "shotgun") or string.find(n, "chainsaw") or string.find(n, "saw") then return true end
+    
+    -- Check Tool/Weapon name
+    for _, child in ipairs(model:GetChildren()) do
+        if child:IsA("Tool") or child:IsA("Model") or child:IsA("BasePart") then
+            local cn = string.lower(child.Name)
+            if string.find(cn, "shotgun") or string.find(cn, "chainsaw") or string.find(cn, "saw") then
+                return true
+            end
+        end
+    end
+    return false
 end
 
 local function manageInfectHighlights()
@@ -1029,25 +1249,16 @@ local function manageInfectHighlights()
             if root then
                 local dist = (root.Position - myPos).Magnitude
                 
-                -- Distance Sanity Check (Self is always 0)
-                if dist < 2 then 
-                     potentialEspTargets[model] = nil 
-                     local highlight = model:FindFirstChild("InfectHighlight")
-                     if highlight then highlight:Destroy() end
-                     continue
+                -- Distance Sanity Check (Don't remove Boss ESP even if close)
+                if not isBossEntity(model) and dist < 2 then 
+                    potentialEspTargets[model] = nil 
+                    local highlight = model:FindFirstChild("InfectHighlight")
+                    if highlight then highlight:Destroy() end
+                    continue
                 end
 
                 -- BOSS CHECK (Priority)
-                local isBoss = false
-                if string.find(string.lower(model.Name), "chimera") then isBoss = true end
-                if not isBoss then
-                     for _, child in ipairs(model:GetChildren()) do
-                         if child:IsA("BasePart") or child:IsA("Model") then
-                             local n = string.lower(child.Name)
-                             if string.find(n, "claw") or string.find(n, "talon") then isBoss = true break end
-                         end
-                     end
-                end
+                local isBoss = isBossEntity(model)
 
                 local maxDist = isBoss and 2000 or 150 -- Bosses have near infinite range
 
@@ -1067,15 +1278,21 @@ local function manageInfectHighlights()
                         hl.Parent = model
                     end
 
-                    -- DYNAMIC COLOR UPDATE
+                    -- DYNAMIC STYLE UPDATE (Boss = Purple, Elite = Orange, Default = Red Outline)
+                    local isElite = isEliteEntity(model)
+                    
                     if isBoss then
-                        if hl.FillColor ~= Color3.fromRGB(220, 180, 255) then
-                             hl.FillColor = Color3.fromRGB(220, 180, 255) -- Light Purple (Boss)
-                        end
+                        hl.FillColor = Color3.fromRGB(130, 0, 255)
+                        hl.OutlineColor = Color3.fromRGB(200, 100, 255)
+                        hl.FillTransparency = 1 -- Outline only
+                    elseif isElite then
+                        hl.FillColor = Color3.fromRGB(255, 140, 0) -- Orange
+                        hl.OutlineColor = Color3.fromRGB(255, 200, 0) -- Brighter Orange Outline
+                        hl.FillTransparency = 1 -- Outline only
                     else
-                        if hl.FillColor ~= Color3.fromRGB(255, 0, 0) then
-                             hl.FillColor = Color3.fromRGB(255, 0, 0) -- Red (Default)
-                        end
+                        hl.FillColor = Color3.fromRGB(255, 0, 0)
+                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                        hl.FillTransparency = 1 -- Outline only
                     end
                 else
                     -- Too far, remove highlight to save rendering slots
@@ -1113,11 +1330,15 @@ local function addInfectESP(model)
         if n == "npc" or string.find(n, "hizoimviewmodel") or string.find(n, "viewmodel") then return false end
         
         -- 0.2 ForceField Check
-        if model:FindFirstChildOfClass("ForceField") then return false end
+        -- BYPASS if Armed/Boss (Fixes ESP drop during skills)
+        local isBoss = isBossEntity(model)
+        if model:FindFirstChildOfClass("ForceField") and not hasWeapon(model) and not isBoss then return false end
 
-        -- 1. Has weapon? ALWAYS Valid.
-        if hasWeapon(model) then return true end
+        -- 1. Has weapon or is Boss? ALWAYS Valid.
+        if hasWeapon(model) or isBoss then return true end
+        
         -- 2. Anchored? INVALID (Statue) until unanchored.
+        -- If armed/boss, we already returned true above, so this checks only unarmed statues
         if root.Anchored then return false end
         return true
     end
@@ -1173,29 +1394,6 @@ local function addInfectESP(model)
     end)
 end
 
-createToggle(VisualsTab, "Infected ESP", false, function(state)
-    infectEspEnabled = state
-    if state then
-        -- Collect existing
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
-                addInfectESP(obj)
-            end
-        end
-        -- Listen for new
-        workspace.DescendantAdded:Connect(function(obj)
-            if infectEspEnabled and obj:IsA("Model") then
-                task.wait(0.1)
-                if obj:FindFirstChildOfClass("Humanoid") then addInfectESP(obj) end
-            end
-        end)
-        -- Start Management Loop
-        task.spawn(manageInfectHighlights)
-    else
-        clearInfectESP()
-    end
-end)
-
 -- 3. Ammo ESP
 local ammoEspEnabled = false
 local ammoName = "Ammo"
@@ -1215,12 +1413,19 @@ local function addAmmoESP(obj)
     -- Check Interactivity (Filter out props)
     local isInteractive = false
     if obj:FindFirstChildWhichIsA("ClickDetector", true) or 
-       obj:FindFirstChildWhichIsA("ProximityPrompt", true) or
-       obj:FindFirstChildWhichIsA("TouchTransmitter", true) then
+    obj:FindFirstChildWhichIsA("ProximityPrompt", true) or
+    obj:FindFirstChildWhichIsA("TouchTransmitter", true) then
         isInteractive = true
     end
     
     if not isInteractive then return end
+    
+    -- Distance check (Consistency with other ESPs)
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local pos = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetPivot().Position) or obj.Position
+        local dist = (pos - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+        if dist > 150 then return end
+    end
     
     -- Check if already highlighted
     if obj:FindFirstChild("AmmoHighlight") then return end
@@ -1228,9 +1433,9 @@ local function addAmmoESP(obj)
     local hl = Instance.new("Highlight")
     hl.Name = "AmmoHighlight"
     hl.Adornee = obj
-    hl.FillColor = Color3.fromRGB(255, 215, 0) -- Gold
-    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-    hl.FillTransparency = 0.5
+    hl.FillColor = Color3.fromRGB(50, 255, 50) -- Lime Green
+    hl.OutlineColor = Color3.fromRGB(0, 255, 0) -- Brighter Lime Outline
+    hl.FillTransparency = 1 -- Outline only for consistency
     hl.OutlineTransparency = 0
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     hl.Parent = ammoEspContainer
@@ -1250,27 +1455,41 @@ local function updateAmmoESP()
     end
 end
 
-createToggleInput(VisualsTab, "Ammo ESP", "Ammo", false, function(val, state)
-    -- val is the string input (name), state is the toggle
-    local newName = tostring(val)
-    local needUpdate = (newName ~= ammoName) or (state ~= ammoEspEnabled)
+createToggle(VisualsTab, "Infected & Ammo ESP", false, function(state)
+    infectEspEnabled = state
+    ammoEspEnabled = state -- Sync ammo with infected
     
-    ammoName = newName
-    ammoEspEnabled = state
-    
-    if needUpdate and ammoEspEnabled then
-        updateAmmoESP()
-    elseif not ammoEspEnabled then
+    if state then
+        -- Refresh existing
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+                addInfectESP(obj)
+            elseif obj:IsA("BasePart") or obj:IsA("Model") then
+                addAmmoESP(obj)
+            end
+        end
+        -- Start Management Loop (Infect ESP uses this for rendering highlights)
+        task.spawn(manageInfectHighlights)
+    else
+        clearInfectESP()
         clearAmmoESP()
     end
 end)
 
+-- Unified Listener (Outside toggle to prevent connection leaks)
 workspace.DescendantAdded:Connect(function(obj)
-    if ammoEspEnabled then
-        task.wait(0.1)
+    if not (infectEspEnabled or ammoEspEnabled) then return end
+    task.wait(0.1)
+    if not obj.Parent then return end
+    
+    if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+        addInfectESP(obj)
+    else
         addAmmoESP(obj)
     end
 end)
+
+-- Ammo Event Listeners are now integrated into the Infected & Ammo ESP toggle
 
 -- 4. Aggressive Mouse Unlock (Shift Lock Fix)
 local mouseOverrideConnection = RunService.RenderStepped:Connect(function()
@@ -1314,6 +1533,13 @@ local function cleanupGUI()
     if infectEspContainer then infectEspContainer:Destroy() end
     if ammoEspContainer then ammoEspContainer:Destroy() end
     
+    -- MANUAL ESP CLEANUP (Since we parent highlights to characters now)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
+            plr.Character.ESPHighlight:Destroy()
+        end
+    end
+    
     clearInfectESP()
     clearAmmoESP()
     stopFly()
@@ -1322,7 +1548,19 @@ local function cleanupGUI()
         LocalPlayer.Character.Humanoid.WalkSpeed = 16
         -- Reset collisions on GUI close
         for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then part.CanCollide = true end
+            if part:IsA("BasePart") then
+                -- WHITELIST: Only restore collision for CORE parts
+                local restoreList = {
+                    ["Head"] = true,
+                    ["HumanoidRootPart"] = true,
+                    ["Torso"] = true,
+                    ["UpperTorso"] = true,
+                    ["LowerTorso"] = true
+                }
+                if restoreList[part.Name] then
+                    part.CanCollide = true 
+                end
+            end
         end
     end
     
@@ -1339,6 +1577,7 @@ ScreenGui.AncestryChanged:Connect(function()
         cleanupGUI()
     end
 end)
+
 
 -- [ TOGGLE ALL KEYBIND ]
 UserInputService.InputBegan:Connect(function(input, gpe)

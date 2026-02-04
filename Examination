@@ -1864,7 +1864,6 @@
     end)
 
     -- [ TOGGLE ALL KEYBIND ]
-    local debugDebounce = false
     mainInputConn = UserInputService.InputBegan:Connect(function(input, gpe)
         if input.KeyCode == Enum.KeyCode.RightControl and not gpe then
             if MainFrame.Visible then
@@ -1873,65 +1872,6 @@
             else
                 MainFrame.Visible = true
                 OpenButton.Visible = false
-            end
-        end
-        
-        -- [ INFECTED DEBUGGER (Key: V) ]
-        if input.KeyCode == Enum.KeyCode.V and not gpe then
-            if debugDebounce then return end
-            debugDebounce = true
-            task.delay(0.5, function() debugDebounce = false end)
-            
-            local mouseLocation = UserInputService:GetMouseLocation()
-            local ray = Camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
-            local params = RaycastParams.new()
-            params.FilterDescendantsInstances = {LocalPlayer.Character}
-            params.FilterType = Enum.RaycastFilterType.Exclude
-
-            local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
-            if result and result.Instance then
-                local hit = result.Instance
-                local model = hit:FindFirstAncestorOfClass("Model")
-                if model then
-                    local plr = Players:GetPlayerFromCharacter(model)
-                    print("--------------------------------------------------")
-                    print("[ DEBUGGER ] Target: " .. model.Name)
-                    if plr then
-                        print("Type: PLAYER")
-                        print("Team: " .. (plr.Team and plr.Team.Name or "None"))
-                        print("TeamColor: " .. tostring(plr.TeamColor))
-                    else
-                        print("Type: NPC / ENTITY")
-                    end
-                    
-                    print("Children/Tools:")
-                    for _, child in ipairs(model:GetChildren()) do
-                        if child:IsA("Tool") then
-                            print(" - [TOOL] " .. child.Name)
-                        elseif child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-                            print(" - [REMOTE] " .. child.Name .. " (" .. child.ClassName .. ")")
-                        elseif child:IsA("Script") or child:IsA("LocalScript") then
-                            print(" - [SCRIPT] " .. child.Name)
-                        elseif child:IsA("BasePart") then
-                            -- print(" - [PART] " .. child.Name) -- Too spammy
-                        else
-                            print(" - [" .. child.ClassName .. "] " .. child.Name)
-                        end
-                    end
-
-                    print("Attributes:")
-                    for name, val in pairs(model:GetAttributes()) do
-                        print(" - " .. name .. ": " .. tostring(val))
-                    end
-                    print("--------------------------------------------------")
-                    
-                    -- VISUAL FEEDBACK
-                    local h = Instance.new("Highlight")
-                    h.FillColor = Color3.fromRGB(255, 0, 255)
-                    h.OutlineColor = Color3.fromRGB(255, 255, 255)
-                    h.Parent = model
-                    task.delay(1, function() if h then h:Destroy() end end)
-                end
             end
         end
     end)

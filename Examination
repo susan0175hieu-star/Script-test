@@ -692,20 +692,6 @@
                     end
                 end)
 
-                -- 1.1 Anti-Staff Protection
-                createToggle(LocalTab, "Anti-Staff Protection", false, function(state)
-                    antiStaffEnabled = state
-                    antiStaffAutoLeave = state -- Combined: Enabling detection also enables auto-leave
-                    antiStaffGroupId = 34159688 -- Hardcoded for this game
-                    
-                    if state then
-                        -- Check existing players
-                        for _, plr in ipairs(Players:GetPlayers()) do
-                            local isStaff, reason = detectStaff(plr)
-                            if isStaff then handleStaffDetection(plr, reason) end
-                        end
-                    end
-                end)
 
                 -- 2. Fly System
                 flySpeed = 50
@@ -1872,6 +1858,21 @@
                     else
                         clearInfectESP()
                         clearAmmoESP()
+                    end
+                end)
+
+                -- 1.1 Anti-Staff Protection (Moved here)
+                createToggle(LocalTab, "Anti-Staff Protection", false, function(state)
+                    antiStaffEnabled = state
+                    antiStaffAutoLeave = state -- Combined: Enabling detection also enables auto-leave
+                    antiStaffGroupId = 34159688 -- Hardcoded for this game
+                    
+                    if state then
+                        -- Check existing players
+                        for _, plr in ipairs(Players:GetPlayers()) do
+                            local isStaff, reason = detectStaff(plr)
+                            if isStaff then handleStaffDetection(plr, reason) end
+                        end
                     end
                 end)
 

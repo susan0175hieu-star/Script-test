@@ -1,4 +1,4 @@
-                -- [ SERVICES ]
+                 -- [ SERVICES ]
                 local Players = game:GetService("Players")
                 local RunService = game:GetService("RunService")
                 local UserInputService = game:GetService("UserInputService")
@@ -1591,19 +1591,16 @@
                                          (humanoid:GetState() == Enum.HumanoidStateType.Ragdoll) or
                                          (humanoid:GetState() == Enum.HumanoidStateType.Physics)
 
-                        -- SKIP DEAD/INVALID 
-                        -- If dead and not moving fast (rolling) and NOT downed (pushed), remove highlight
-                        if isDead and not isDowned then
-                            -- Only keep highlight if they are in a high-speed roll (death state bypass)
-                            if velocityMag < 5 then -- Lowered from 20 to 5 to avoid losing highlight on slow push
-                                local highlight = model:FindFirstChild("InfectHighlight")
-                                if highlight then pcall(function() highlight:Destroy() end) end
-                                -- If they stay dead/still, remove from tracking
-                                if velocityMag < 1 then
-                                    potentialEspTargets[model] = nil
-                                end
-                                continue
+                        -- SKIP DEAD/INVALID (Priority Logic)
+                        if isDead then
+                            local highlight = model:FindFirstChild("InfectHighlight")
+                            if highlight then pcall(function() highlight:Destroy() end) end
+                            
+                            -- Remove from tracking list if settled (no longer moving)
+                            if velocityMag < 1 then
+                                potentialEspTargets[model] = nil
                             end
+                            continue
                         end
 
                             if root then

@@ -1,6 +1,3 @@
-                -- Examination GUI for Roblox
-                -- Refactored & Optimized by Antigravity
-
                 -- [ SERVICES ]
                 local Players = game:GetService("Players")
                 local RunService = game:GetService("RunService")

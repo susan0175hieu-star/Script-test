@@ -1,3 +1,6 @@
+                -- Examination GUI for Roblox
+                -- Refactored & Optimized by Antigravity
+
                 -- [ SERVICES ]
                 local Players = game:GetService("Players")
                 local RunService = game:GetService("RunService")
@@ -1758,106 +1761,34 @@
                     end)
                 end
 
-                -- 3. Ammo ESP
-                local ammoEspEnabled = false
-                local ammoName = "Ammo"
-                local potentialAmmoTargets = {}
 
-                local function clearAmmoESP() 
-                    for obj, _ in pairs(potentialAmmoTargets) do
-                        if obj and obj:FindFirstChild("AmmoHighlight") then
-                            obj.AmmoHighlight:Destroy()
-                        end
-                    end
-                    potentialAmmoTargets = {}
-                end
-
-                local function addAmmoESP(obj)
-                    if not ammoEspEnabled then return end
-                    if not obj:IsA("BasePart") and not obj:IsA("Model") then return end
-                    
-                    -- Check Name Match (Case Insensitive)
-                    if not string.find(string.lower(obj.Name), string.lower(ammoName)) then return end
-                    
-                    -- Check Interactivity (Filter out props)
-                    local isInteractive = false
-                    if obj:FindFirstChildWhichIsA("ClickDetector", true) or 
-                    obj:FindFirstChildWhichIsA("ProximityPrompt", true) or
-                    obj:FindFirstChildWhichIsA("TouchTransmitter", true) then
-                        isInteractive = true
-                    end
-                    
-                    if not isInteractive then return end
-                    
-                    -- Register as potential target
-                    potentialAmmoTargets[obj] = true
-                    
-                    -- Cleanup on remove
-                    obj.AncestryChanged:Connect(function()
-                        if not obj:IsDescendantOf(game) then potentialAmmoTargets[obj] = nil end
-                    end)
-                end
-
-                local function manageAmmoHighlights()
-                    while ammoEspEnabled do
-                        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                            task.wait(1)
-                            continue
-                        end
-                        
-                        local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-                        
-                        for obj, _ in pairs(potentialAmmoTargets) do
-                            if not obj or not obj.Parent then 
-                                potentialAmmoTargets[obj] = nil
-                                continue 
-                            end
-                            
-                            local pos = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetPivot().Position) or obj.Position
-                            local dist = (pos - myPos).Magnitude
-                            local hl = obj:FindFirstChild("AmmoHighlight")
-                            
-                            -- SLOT MANAGEMENT: Only highlight if < 150 studs
-                            if dist < 150 then
-                                if not hl then
-                                    hl = Instance.new("Highlight")
-                                    hl.Name = "AmmoHighlight"
-                                    hl.Adornee = obj
-                                    hl.FillColor = Color3.fromRGB(50, 255, 50) -- Lime Green
-                                    hl.OutlineColor = Color3.fromRGB(0, 255, 0) -- Brighter Lime Outline
-                                    hl.FillTransparency = 1 -- Outline only
-                                    hl.OutlineTransparency = 0
-                                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                                    hl.Parent = obj
-                                end
-                            else
-                                -- Too far/Already has highlight, remove it
-                                if hl then hl:Destroy() end
-                            end
-                        end
-                        task.wait(0.5) -- Check twice a second
-                    end
-                end
-
-                createToggle(VisualsTab, "Infected & Ammo ESP", false, function(state)
+                createToggle(VisualsTab, "Infected ESP", false, function(state)
                     infectEspEnabled = state
-                    ammoEspEnabled = state -- Sync ammo with infected
                     
                     if state then
-                        -- Refresh existing
-                        for _, obj in ipairs(workspace:GetDescendants()) do
-                            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
-                                addInfectESP(obj)
-                            elseif obj:IsA("BasePart") or obj:IsA("Model") then
-                                addAmmoESP(obj)
+                        -- STAGGERED INITIAL SCAN (Prevents Crash)
+                        task.spawn(function()
+                            local allDesc = workspace:GetDescendants()
+                            local count = 0
+                            for _, obj in ipairs(allDesc) do
+                                if not infectEspEnabled then break end -- Stop if toggled off
+                                
+                                -- 1. Infected Check
+                                if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+                                    addInfectESP(obj)
+                                end
+                                
+                                count = count + 1
+                                if count >= 300 then -- Process 300 items then pause
+                                    count = 0
+                                    task.wait() -- Move to next frame/cycle
+                                end
                             end
-                        end
+                        end)
                         -- Start Management Loops
                         task.spawn(manageInfectHighlights)
-                        task.spawn(manageAmmoHighlights)
                     else
                         clearInfectESP()
-                        clearAmmoESP()
                     end
                 end)
 
@@ -1876,9 +1807,8 @@
                     end
                 end)
 
-                -- Unified Listener (Outside toggle to prevent connection leaks)
                 workspace.DescendantAdded:Connect(function(obj)
-                    if not (infectEspEnabled or ammoEspEnabled) then return end
+                    if not infectEspEnabled then return end
                     -- Remove fixed wait, handling individual component additions is better
                     if not obj.Parent then return end
                     
@@ -1886,7 +1816,6 @@
                     if obj:IsA("Model") then
                         task.wait(0.1) -- Give it a moment for children
                         addInfectESP(obj)
-                        if obj:IsA("BasePart") or obj:IsA("Model") then addAmmoESP(obj) end -- Fallback for Ammo Model
                     
                     -- 2. Catch HUMANOID Added (The reliable trigger)
                     elseif obj:IsA("Humanoid") then
@@ -1895,14 +1824,8 @@
                     -- 3. Catch ROOT PART Added (Another reliable trigger)
                     elseif obj.Name == "HumanoidRootPart" then
                         addInfectESP(obj.Parent)
-
-                    -- 4. Ammo Check (Parts)
-                    elseif obj:IsA("BasePart") then
-                        addAmmoESP(obj)
                     end
                 end)
-
-                -- Ammo Event Listeners are now integrated into the Infected & Ammo ESP toggle
 
                 -- 4. Aggressive Mouse Unlock (Shift Lock Fix)
                 local mouseOverrideConnection = RunService.RenderStepped:Connect(function()
@@ -1955,7 +1878,6 @@
                     end
                     
                     clearInfectESP()
-                    clearAmmoESP()
                     
                     for _, plr in ipairs(Players:GetPlayers()) do
                         if plr.Character then

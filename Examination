@@ -1,1595 +1,1864 @@
--- [ SERVICES ]
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
-local Lighting = game:GetService("Lighting")
-local TeleportService = game:GetService("TeleportService")
+            -- [ SERVICES ]
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local UserInputService = game:GetService("UserInputService")
+            local CoreGui = game:GetService("CoreGui")
+            local Lighting = game:GetService("Lighting")    
+            local TeleportService = game:GetService("TeleportService")
 
--- [ VARIABLES ]
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+            -- [ VARIABLES ]
+            local LocalPlayer = Players.LocalPlayer
+            local Camera = workspace.CurrentCamera
 
--- [ SETTINGS ]
-local walkSpeed = 24
-local flySpeed = 50
-local flyEnabled = false
-local noclipEnabled = false
-local infiniteJumpEnabled = false
-local infectEspEnabled = false
-local ammoEspEnabled = false
-local debugMode = false
-local validEnemies = {}
+            -- [ SETTINGS ]
+            local walkSpeed = 16
+            local flySpeed = 50
+            local flyEnabled = false
+            local noclipEnabled = false
+            local infiniteJumpEnabled = false
+            local infectEspEnabled = false
+            local ammoEspEnabled = false
+            local debugMode = false
+            local validEnemies = {}
+            local antiStaffEnabled = false
+            local antiStaffAutoLeave = false
+            local antiStaffGroupId = 34159688 -- Specific Game Group ID
+            local detectedStaff = {}
 
--- [ UI CONFIGURATION ]
-local RESX, RESY = 900, 300 -- Compact Height for 3 columns
-local THEME = {
-    Background = Color3.fromRGB(30, 30, 35),
-    Header = Color3.fromRGB(25, 25, 30),
-    Accent = Color3.fromRGB(0, 120, 215),
-    Text = Color3.fromRGB(240, 240, 240),
-    Description = Color3.fromRGB(180, 180, 180)
-}
-
--- [ STARTUP CLEANUP ]
-if CoreGui:FindFirstChild("ExaminationGUI") then CoreGui.ExaminationGUI:Destroy() end
-if LocalPlayer.PlayerGui:FindFirstChild("ExaminationGUI") then LocalPlayer.PlayerGui.ExaminationGUI:Destroy() end
-if CoreGui:FindFirstChild("ExaminationESP") then CoreGui.ExaminationESP:Destroy() end
-if CoreGui:FindFirstChild("InfectESP") then CoreGui.InfectESP:Destroy() end
-if CoreGui:FindFirstChild("AmmoESP") then CoreGui.AmmoESP:Destroy() end
-
--- [ MAIN UI CREATION ]
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ExaminationGUI"
-ScreenGui.ResetOnSpawn = false
-
--- Security Fallback
-if pcall(function() ScreenGui.Parent = CoreGui end) then
-    -- Parented to CoreGui
-else
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
-
--- > Main Frame
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, RESX, 0, RESY)
-MainFrame.Position = UDim2.new(0.5, -RESX/2, 0.5, -RESY/2)
-MainFrame.BackgroundColor3 = THEME.Background
-MainFrame.BorderSizePixel = 0
-MainFrame.Parent = ScreenGui
-
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
-UICorner.Parent = MainFrame
-
--- Modal Fix (Force mouse unlock when GUI is visible)
-local ModalFix = Instance.new("TextButton")
-ModalFix.Name = "ModalFix"
-ModalFix.Size = UDim2.new(0, 0, 0, 0)
-ModalFix.BackgroundTransparency = 1
-ModalFix.Text = ""
-ModalFix.Modal = true
-ModalFix.Parent = MainFrame
-
--- > Header
-local Header = Instance.new("Frame")
-Header.Name = "Header"
-Header.Size = UDim2.new(1, 0, 0, 40)
-Header.BackgroundColor3 = THEME.Header
-Header.BorderSizePixel = 0
-Header.Parent = MainFrame
-
-local HeaderCorner = Instance.new("UICorner")
-HeaderCorner.CornerRadius = UDim.new(0, 8)
-HeaderCorner.Parent = Header
-
--- Header Cover (Square bottom corners)
-local HeaderCover = Instance.new("Frame")
-HeaderCover.Size = UDim2.new(1, 0, 0, 10)
-HeaderCover.Position = UDim2.new(0, 0, 1, -10)
-HeaderCover.BackgroundColor3 = THEME.Header
-HeaderCover.BorderSizePixel = 0
-HeaderCover.Parent = Header
-
--- Title
-local Title = Instance.new("TextLabel")
-Title.Name = "Title"
-Title.Text = "Examination GUI"
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 18
-Title.TextColor3 = THEME.Text
-Title.Size = UDim2.new(1, -20, 1, 0)
-Title.Position = UDim2.new(0, 10, 0, 0)
-Title.BackgroundTransparency = 1
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Header
-
-local TitleStroke = Instance.new("UIStroke")
-TitleStroke.Thickness = 1.2
-TitleStroke.Color = Color3.fromRGB(0, 0, 0)
-TitleStroke.Transparency = 0.5
-TitleStroke.Parent = Title
-
--- [ HEADER BUTTONS ]
-
--- 1. Rejoin Button (Center-Left)
-local RejoinButton = Instance.new("TextButton")
-RejoinButton.Name = "RejoinButton"
-RejoinButton.Text = "Rejoin"
-RejoinButton.Size = UDim2.new(0, 80, 0, 30)
-RejoinButton.AnchorPoint = Vector2.new(1, 0.5)
-RejoinButton.Position = UDim2.new(0.5, -5, 0.5, 0)
-RejoinButton.BackgroundTransparency = 1
-RejoinButton.TextColor3 = THEME.Description
-RejoinButton.Font = Enum.Font.GothamBold
-RejoinButton.TextSize = 16
-RejoinButton.Parent = Header
-
-local RejoinStroke = Instance.new("UIStroke")
-RejoinStroke.Thickness = 0.5
-RejoinStroke.Color = Color3.fromRGB(0, 0, 0)
-RejoinStroke.Parent = RejoinButton
-
-RejoinButton.MouseButton1Click:Connect(function()
-    if #Players:GetPlayers() <= 1 then
-        LocalPlayer:Kick("\n\n(Rejoining...)")
-        task.wait()
-        TeleportService:Teleport(game.PlaceId, LocalPlayer)
-    else
-        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
-    end
-end)
-
--- 2. Reset Button (Center-Right)
-local ResetButton = Instance.new("TextButton")
-ResetButton.Name = "ResetButton"
-ResetButton.Text = "Reset"
-ResetButton.Size = UDim2.new(0, 80, 0, 30)
-ResetButton.AnchorPoint = Vector2.new(0, 0.5)
-ResetButton.Position = UDim2.new(0.5, 5, 0.5, 0)
-ResetButton.BackgroundTransparency = 1
-ResetButton.TextColor3 = THEME.Description
-ResetButton.TextSize = 16
-ResetButton.Font = Enum.Font.GothamBold
-ResetButton.Parent = Header
-
-local ResetStroke = Instance.new("UIStroke")
-ResetStroke.Thickness = 0.5
-ResetStroke.Color = Color3.fromRGB(0, 0, 0)
-ResetStroke.Parent = ResetButton
-
-ResetButton.MouseButton1Click:Connect(function()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.Health = 0
-    end
-end)
-
--- 3. Open Button (Floating Icon when Minimized)
-local OpenButton = Instance.new("TextButton")
-OpenButton.Name = "OpenButton"
-OpenButton.Size = UDim2.new(0, 50, 0, 50)
-OpenButton.Position = UDim2.new(0, 10, 0.5, -25)
-OpenButton.BackgroundColor3 = THEME.Accent
-OpenButton.TextColor3 = THEME.Text
-OpenButton.Text = "Open"
-OpenButton.Font = Enum.Font.GothamBold
-OpenButton.TextSize = 14
-OpenButton.Visible = false -- Hidden by default
-OpenButton.Parent = ScreenGui
-
-local OpenCorner = Instance.new("UICorner")
-OpenCorner.CornerRadius = UDim.new(1, 0)
-OpenCorner.Parent = OpenButton
-
-OpenButton.MouseButton1Click:Connect(function()
-    MainFrame.Visible = true
-    OpenButton.Visible = false
-end)
-
--- 4. Minimize Button (-)
-local MinButton = Instance.new("TextButton")
-MinButton.Name = "MinButton"
-MinButton.Text = "-"
-MinButton.Size = UDim2.new(0, 30, 0, 30)
-MinButton.Position = UDim2.new(1, -70, 0, 5) -- Next to Close
-MinButton.BackgroundTransparency = 1
-MinButton.TextColor3 = THEME.Description
-MinButton.TextSize = 24
-MinButton.Font = Enum.Font.GothamBold
-MinButton.Parent = Header
-
-local MinStroke = Instance.new("UIStroke")
-MinStroke.Thickness = 0.5
-MinStroke.Color = Color3.fromRGB(0, 0, 0)
-MinStroke.Parent = MinButton
-
-MinButton.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    OpenButton.Visible = true
-end)
-
--- 5. Close Button (X)
-local CloseButton = Instance.new("TextButton")
-CloseButton.Name = "CloseButton"
-CloseButton.Text = "X"
-CloseButton.Size = UDim2.new(0, 30, 0, 30)
-CloseButton.Position = UDim2.new(1, -35, 0, 5)
-CloseButton.BackgroundTransparency = 1
-CloseButton.TextColor3 = THEME.Description
-CloseButton.TextSize = 18
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.Parent = Header
-
-local CloseStroke = Instance.new("UIStroke")
-CloseStroke.Thickness = 0.5
-CloseStroke.Color = Color3.fromRGB(0, 0, 0)
-CloseStroke.Parent = CloseButton
-
--- [ TABS REMOVED ]
-
--- Content Container
-local ContentContainer = Instance.new("Frame")
-ContentContainer.Name = "ContentContainer"
-ContentContainer.Size = UDim2.new(1, -20, 1, -50)
-ContentContainer.Position = UDim2.new(0, 10, 0, 45)
-ContentContainer.BackgroundTransparency = 1
-ContentContainer.Parent = MainFrame
-
-local ContentLayout = Instance.new("UIListLayout")
-ContentLayout.FillDirection = Enum.FillDirection.Horizontal
-ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ContentLayout.Padding = UDim.new(0, 10)
-ContentLayout.Parent = ContentContainer
-
-
--- [ DRAGGING LOGIC ]
-local dragging, dragInput, dragStart, startPos
-
-local function update(input)
-    local delta = input.Position - dragStart
-    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
-
-Header.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-        
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-Header.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        update(input)
-    end
-end)
-
-
--- [ UI HELPERS ]
-local currentTab = nil
-
-local function createColumn(name)
-    local Column = Instance.new("Frame")
-    Column.Name = name .. "Column"
-    Column.Size = UDim2.new(0.32, 0, 1, 0) -- 3 Columns approx 33%
-    Column.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
-    Column.BorderSizePixel = 0
-    Column.Parent = ContentContainer
-    
-    local Corner = Instance.new("UICorner")
-    Corner.CornerRadius = UDim.new(0, 6)
-    Corner.Parent = Column
-    
-    -- Column Header
-    local Header = Instance.new("TextLabel")
-    Header.Text = string.upper(name)
-    Header.Size = UDim2.new(1, 0, 0, 30)
-    Header.BackgroundTransparency = 1
-    Header.TextColor3 = THEME.Accent
-    Header.Font = Enum.Font.GothamBold
-    Header.TextSize = 14
-    Header.Parent = Column
-
-local HeaderStroke = Instance.new("UIStroke")
-HeaderStroke.Thickness = 1
-HeaderStroke.Color = Color3.fromRGB(0, 0, 0)
-HeaderStroke.Transparency = 0.8
-HeaderStroke.Parent = Header
-
-    -- Scroll Area
-    local Page = Instance.new("ScrollingFrame")
-    Page.Name = "Page"
-    Page.Size = UDim2.new(1, 0, 1, -35)
-    Page.Position = UDim2.new(0, 0, 0, 35)
-    Page.BackgroundTransparency = 1
-    Page.BorderSizePixel = 0
-    Page.ScrollBarThickness = 2
-    Page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    Page.CanvasSize = UDim2.new(0, 0, 0, 0)
-    Page.Parent = Column
-    
-    local UIList = Instance.new("UIListLayout")
-    UIList.Padding = UDim.new(0, 8)
-    UIList.SortOrder = Enum.SortOrder.LayoutOrder
-    UIList.Parent = Page
-    
-    local UIPad = Instance.new("UIPadding")
-    UIPad.PaddingLeft = UDim.new(0, 5)
-    UIPad.PaddingRight = UDim.new(0, 5)
-    UIPad.PaddingBottom = UDim.new(0, 5)
-    UIPad.Parent = Page
-    
-    return Page
-end
-
-local function createToggle(page, text, default, callback)
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 40)
-    Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-    Frame.BorderSizePixel = 0
-    Frame.Parent = page
-    
-    local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(0, 6)
-    UICorner.Parent = Frame
-    
-    local Label = Instance.new("TextLabel")
-    Label.Text = text
-    Label.Size = UDim2.new(1, -60, 1, 0)
-    Label.Position = UDim2.new(0, 10, 0, 0)
-    Label.BackgroundTransparency = 1
-    Label.TextColor3 = THEME.Text
-    Label.Font = Enum.Font.Gotham
-    Label.TextSize = 14
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = Frame
-
-    local LabelStroke = Instance.new("UIStroke")
-    LabelStroke.Thickness = 0.5
-    LabelStroke.Color = Color3.fromRGB(0, 0, 0)
-    LabelStroke.Transparency = 0.7
-    LabelStroke.Parent = Label
-    
-    local Button = Instance.new("TextButton")
-    Button.Text = ""
-    Button.Size = UDim2.new(0, 40, 0, 20)
-    Button.Position = UDim2.new(1, -50, 0.5, -10)
-    Button.BackgroundColor3 = default and THEME.Accent or Color3.fromRGB(60, 60, 60)
-    Button.Parent = Frame
-    
-    local ButtonCorner = Instance.new("UICorner")
-    ButtonCorner.CornerRadius = UDim.new(1, 0)
-    ButtonCorner.Parent = Button
-
-    local Circle = Instance.new("Frame")
-    Circle.Size = UDim2.new(0, 16, 0, 16)
-    Circle.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-    Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Circle.Parent = Button
-    
-    local CircleCorner = Instance.new("UICorner")
-    CircleCorner.CornerRadius = UDim.new(1, 0)
-    CircleCorner.Parent = Circle
-    
-    local toggled = default
-    
-    Button.MouseButton1Click:Connect(function()
-        toggled = not toggled
-        if toggled then
-            Button.BackgroundColor3 = THEME.Accent
-            Circle.Position = UDim2.new(1, -18, 0.5, -8)
-        else
-            Button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-            Circle.Position = UDim2.new(0, 2, 0.5, -8)
-        end
-        callback(toggled)
-    end)
-end
-
-local function createToggleInput(page, text, defaultVal, defaultToggle, callback)
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 40)
-    Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-    Frame.BorderSizePixel = 0
-    Frame.Parent = page
-    
-    local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(0, 6)
-    UICorner.Parent = Frame
-    
-    local Label = Instance.new("TextLabel")
-    Label.Text = text
-    Label.Size = UDim2.new(1, -110, 1, 0)
-    Label.Position = UDim2.new(0, 10, 0, 0)
-    Label.BackgroundTransparency = 1
-    Label.TextColor3 = THEME.Text
-    Label.Font = Enum.Font.Gotham
-    Label.TextSize = 14
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = Frame
-
-    local LabelStroke = Instance.new("UIStroke")
-    LabelStroke.Thickness = 0.5
-    LabelStroke.Color = Color3.fromRGB(0, 0, 0)
-    LabelStroke.Transparency = 0.7
-    LabelStroke.Parent = Label
-    
-    -- Toggle Button
-    local ToggleButton = Instance.new("TextButton")
-    ToggleButton.Text = ""
-    ToggleButton.Size = UDim2.new(0, 40, 0, 20)
-    ToggleButton.Position = UDim2.new(1, -110, 0.5, -10)
-    ToggleButton.BackgroundColor3 = defaultToggle and THEME.Accent or Color3.fromRGB(60, 60, 60)
-    ToggleButton.Parent = Frame
-    
-    local ToggleCorner = Instance.new("UICorner")
-    ToggleCorner.CornerRadius = UDim.new(1, 0)
-    ToggleCorner.Parent = ToggleButton
-
-    local Circle = Instance.new("Frame")
-    Circle.Size = UDim2.new(0, 16, 0, 16)
-    Circle.Position = defaultToggle and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-    Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Circle.Parent = ToggleButton
-    
-    local CircleCorner = Instance.new("UICorner")
-    CircleCorner.CornerRadius = UDim.new(1, 0)
-    CircleCorner.Parent = Circle
-    
-    -- Input Box
-    local InputBox = Instance.new("TextBox")
-    InputBox.Text = tostring(defaultVal)
-    InputBox.Size = UDim2.new(0, 60, 0, 24)
-    InputBox.Position = UDim2.new(1, -65, 0.5, -12)
-    InputBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    InputBox.TextColor3 = THEME.Text
-    InputBox.Font = Enum.Font.Gotham
-    InputBox.TextSize = 14
-    InputBox.Parent = Frame
-
-    local BoxStroke = Instance.new("UIStroke")
-    BoxStroke.Thickness = 1
-    BoxStroke.Color = Color3.fromRGB(60, 60, 60)
-    BoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    BoxStroke.Parent = InputBox
-    
-    local BoxCorner = Instance.new("UICorner")
-    BoxCorner.CornerRadius = UDim.new(0, 4)
-    BoxCorner.Parent = InputBox
-    
-    -- Logic
-    local isToggled = defaultToggle
-    local currentVal = defaultVal
-    
-    local function trigger()
-        callback(currentVal, isToggled)
-    end
-    
-    ToggleButton.MouseButton1Click:Connect(function()
-        isToggled = not isToggled
-        if isToggled then
-            ToggleButton.BackgroundColor3 = THEME.Accent
-            Circle.Position = UDim2.new(1, -18, 0.5, -8)
-        else
-            ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-            Circle.Position = UDim2.new(0, 2, 0.5, -8)
-        end
-        trigger()
-    end)
-    
-    local function set(val, toggle)
-        if val ~= nil then
-            currentVal = val
-            InputBox.Text = tostring(val)
-        end
-        if toggle ~= nil then
-            isToggled = toggle
-            if isToggled then
-                ToggleButton.BackgroundColor3 = THEME.Accent
-                Circle.Position = UDim2.new(1, -18, 0.5, -8)
-            else
-                ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                Circle.Position = UDim2.new(0, 2, 0.5, -8)
-            end
-        end
-        trigger()
-    end
-    
-    return set
-end
-
-
--- [ TABS & LOGIC ]
--- [ COLUMNS & LOGIC ]
-local LocalTab = createColumn("Players")
-local CombatTab = createColumn("Combat")
-local VisualsTab = createColumn("Visuals")
-
-
--- ====================
--- CATEGORY: LOCAL PLAYER
--- ====================
-
--- 1. WalkSpeed
-local wsConnection = nil
-createToggleInput(LocalTab, "WalkSpeed", 24, false, function(val, state)
-    if wsConnection then wsConnection:Disconnect() wsConnection = nil end
-    
-    if state then
-        walkSpeed = val -- UPDATE GLOBAL VARIABLE
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = val
-        end
-        wsConnection = RunService.RenderStepped:Connect(function()
-            if not ScreenGui.Parent then -- Suicide check
-                if wsConnection then wsConnection:Disconnect() end
-                return
-            end
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                -- Only enforce WalkSpeed if NOT flying (Flying handles speed separately to avoid camera tilt)
-                if not flyEnabled then
-                    LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed
+            -- [ ANTI-STAFF LOGIC ]
+            local function detectStaff(player)
+                if not player or player == LocalPlayer then return false end
+                
+                -- 1. Creator Check
+                if player.UserId == game.CreatorId and game.CreatorType == Enum.CreatorType.User then
+                    return true, "Game Creator"
                 end
-            end
-        end)
-    else
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = 16
-        end
-    end
-end)
-
--- 2. Fly System
-local flyEnabled = false
-local flySpeed = 50
-local flyBodyGyro, flyBodyVelocity
-
-local function stopFly()
-    if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
-    if flyBodyVelocity then flyBodyVelocity:Destroy() flyBodyVelocity = nil end
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.PlatformStand = false
-        LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed -- Restore Speed
-    end
-end
-
-local function startFly()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-    
-    local hrp = char.HumanoidRootPart
-    local humanoid = char:FindFirstChild("Humanoid")
-    
-    if flyBodyGyro or flyBodyVelocity then return end
-    
-    flyBodyGyro = Instance.new("BodyGyro")
-    flyBodyGyro.P = 9e4
-    flyBodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
-    flyBodyGyro.cframe = hrp.CFrame
-    flyBodyGyro.Parent = hrp
-    
-    flyBodyVelocity = Instance.new("BodyVelocity")
-    flyBodyVelocity.velocity = Vector3.new(0,0.1,0)
-    flyBodyVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
-    flyBodyVelocity.Parent = hrp
-    
-    humanoid.PlatformStand = true
-    humanoid.WalkSpeed = 16 -- Reset to default to prevent Camera Tilt from game scripts
-    
-    task.spawn(function()
-        while flyEnabled and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 do
-            if not ScreenGui.Parent then stopFly() break end
-            if not flyBodyGyro or not flyBodyGyro.Parent then break end
-            
-            -- Lock Gyro to Camera LookVector but Keep Upright (Removes Tilt/Roll)
-            flyBodyGyro.cframe = CFrame.lookAt(hrp.Position, hrp.Position + Camera.CFrame.LookVector)
-            
-            local vel = Vector3.new()
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + Camera.CFrame.LookVector * flySpeed end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then vel = vel - Camera.CFrame.LookVector * flySpeed end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then vel = vel + Camera.CFrame.RightVector * flySpeed end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then vel = vel - Camera.CFrame.RightVector * flySpeed end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0, 1, 0) * flySpeed end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then vel = vel - Vector3.new(0, 1, 0) * flySpeed end
-            
-            flyBodyVelocity.velocity = vel
-            RunService.RenderStepped:Wait()
-        end
-    end)
-end
-
-local toggleFly = createToggleInput(LocalTab, "Fly Mode (F)", 50, false, function(val, state)
-    flySpeed = val
-    flyEnabled = state
-    if flyEnabled then startFly() else stopFly() end
-end)
-
--- Keybind for Fly (F)
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.F then
-        toggleFly(nil, not flyEnabled)
-    end
-end)
-
--- 3. FullBright
-local fullBrightConnection = nil
-createToggle(VisualsTab, "FullBright", false, function(state)
-    if state then
-        fullBrightConnection = RunService.RenderStepped:Connect(function()
-            if not ScreenGui.Parent then
-                if fullBrightConnection then fullBrightConnection:Disconnect() end
-                return
-            end
-            Lighting.Brightness = 2
-            Lighting.ClockTime = 14
-            Lighting.FogEnd = 100000
-            Lighting.GlobalShadows = false
-            Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-        end)
-    else
-        if fullBrightConnection then
-            fullBrightConnection:Disconnect()
-            fullBrightConnection = nil
-            Lighting.Brightness = 1
-            Lighting.GlobalShadows = true
-        end
-    end
-end)
-
--- 4. Noclip (Walk Through Walls)
-local noclipConnection = nil
-createToggle(LocalTab, "Noclip", false, function(state)
-    if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
-    
-    if state then
-        noclipConnection = RunService.Stepped:Connect(function()
-            if not ScreenGui.Parent then -- Suicide check
-                if noclipConnection then noclipConnection:Disconnect() end
-                return
-            end
-            
-            local char = LocalPlayer.Character
-            if char then
-                for _, part in ipairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") and part.CanCollide then
-                        part.CanCollide = false
+                
+                -- 2. Group Rank Check
+                if antiStaffGroupId > 0 then
+                    local s, rank = pcall(function() return player:GetRankInGroup(antiStaffGroupId) end)
+                    if s and rank >= 200 then -- Most games use 200+ for staff
+                        return true, "Group Staff (Rank " .. rank .. ")"
                     end
                 end
-            end
-        end)
-    else
-        -- RESET COLLISIONS IMMEDIATELY
-        local char = LocalPlayer.Character
-        if char then
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    -- WHITELIST: Only restore collision for CORE parts
-                    -- Restoring collision on limbs (Arms/Legs) causes FLING due to self-collision
-                    local restoreList = {
-                        ["Head"] = true,
-                        ["HumanoidRootPart"] = true,
-                        ["Torso"] = true,
-                        ["UpperTorso"] = true,
-                        ["LowerTorso"] = true
-                    }
-                    if restoreList[part.Name] then
-                        part.CanCollide = true
+                
+                -- 3. Name/Display Name Keywords
+                local keywords = {"mod", "admin", "staff", "dev", "helper", "owner"}
+                local name = string.lower(player.Name)
+                local display = string.lower(player.DisplayName)
+                
+                for _, kw in ipairs(keywords) do
+                    if string.find(name, kw) or string.find(display, kw) then
+                        return true, "Keyword Match: " .. kw
                     end
                 end
+                
+                return false
             end
-        end
-    end
-end)
 
-
-
-
-
--- ====================
--- CATEGORY: COMBAT
--- ====================
-
-local aimEnabled = false
-local aimKey = Enum.UserInputType.MouseButton2
-local aimFOV = 200
-local aimSmoothness = 0.6
-local aimBotDebug = false
-local validEnemies = {}
-
--- HELPER: Weapon Detection (Tools + Custom Names)
-local function hasWeapon(char)
-    if not char then return false end
-    
-    -- 0. BOSS NAME CHECK
-    local charName = string.lower(char.Name)
-    if string.find(charName, "chimera") or string.find(charName, "boss") then return true, "BossName" end
-
-    -- 0.1 BOSS WEAPON CHECK (Priority)
-    for _, child in ipairs(char:GetChildren()) do
-        if child:IsA("BasePart") or child:IsA("Model") then
-            local n = string.lower(child.Name)
-            if string.find(n, "claw") or string.find(n, "talon") or string.find(n, "sting") then return true, "BossPart" end
-        end
-    end
-
-    -- 1. Standard Tool
-    local tool = char:FindFirstChildOfClass("Tool")
-    if tool then return true, tool.Name end
-    
-    -- 2. Custom Named Parts/Models (e.g. Chainsaw)
-    local weaponKeywords = {
-        "chainsaw", "weapon", "gun", "rifle", "axe", "blade", "knife",
-        "pistol", "revolver", "g17", "m9", "glock",
-        "shotgun", "spas", "remington",
-        "smg", "mp5", "uzi",
-        "sniper", "awp", "barrett",
-        "bow", "crossbow",
-        "sword", "katana", "saber",
-        "claw", "talon", "sting", -- BOSS KEYWORDS
-        "shield", "guard", "defense" -- SHIELD MONSTER KEYWORDS
-    }
-
-    -- Recursive Check (GetDescendants) to find nested weapons
-    for _, child in ipairs(char:GetDescendants()) do
-        if child:IsA("BasePart") or child:IsA("Model") then
-            local name = string.lower(child.Name)
-            
-            -- BLACKLIST: Ignore holsters, pouches, bags
-            if string.find(name, "holster") or string.find(name, "pouch") or string.find(name, "bag") or string.find(name, "sheath") then
-                -- Skip this part (Safe)
-            else
-                -- WHITELIST CHECK
-                for _, keyword in ipairs(weaponKeywords) do
-                    if string.find(name, keyword) then return true, child.Name end
+            local function handleStaffDetection(player, reason)
+                if not antiStaffEnabled then return end
+                if detectedStaff[player.UserId] then return end
+                detectedStaff[player.UserId] = true
+                
+                if antiStaffAutoLeave then
+                    LocalPlayer:Kick("\nCó Staff vào kiểm tra. Nên Script tự Kick bạn ra server")
+                else
+                    -- Visual Alert if not auto-leaving
+                    if pcall(function()
+                        game:GetService("StarterGui"):SetCore("SendNotification", {
+                            Title = "!!! STAFF DETECTED !!!",
+                            Text = player.Name .. " is a " .. reason,
+                            Duration = 10,
+                            Button1 = "Leave Now"
+                        })
+                    end) then end
                 end
             end
-        end
-    end
-    return false
-end
 
--- 1. Enemy Tracker (Smart Scanner)
-local function addEnemy(model)
-    if model == LocalPlayer.Character then return end
-    if Players:GetPlayerFromCharacter(model) then return end
-    
-    if not model:FindFirstChildOfClass("Humanoid") then return end
-    
-    -- BLACKLIST (Friendlies)
-    local n = string.lower(model.Name)
-    if n == "npc" or string.find(n, "hizoimviewmodel") or string.find(n, "viewmodel") then return end
-    
-    -- FORCEFIELD CHECK (Invincible/Friendly)
-    if model:FindFirstChildOfClass("ForceField") then return end
-
-    task.spawn(function()
-        local root = model:FindFirstChild("HumanoidRootPart")
-        if root and root.Anchored then
-            -- WEAPON CHECK: If it has a gun/tool, it's NOT a statue (it's an armed guard)
-            if hasWeapon(model) then
-                -- Bypass wait, it's an enemy
-            else
-                task.wait(1)
-                -- If still anchored after 1s AND no weapon, it's a statue
-                if root and root.Anchored and not hasWeapon(model) then return end
-            end
-        end
-        if not model:IsDescendantOf(game) then return end
-        if table.find(validEnemies, model) then return end -- Prevent duplicates
-    table.insert(validEnemies, model)
-    end)
-    
-    model.AncestryChanged:Connect(function()
-        if not model:IsDescendantOf(game) then
-            local index = table.find(validEnemies, model)
-            if index then table.remove(validEnemies, index) end
-        end
-    end)
-    local hum = model:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum.Died:Connect(function()
-            local index = table.find(validEnemies, model)
-            if index then table.remove(validEnemies, index) end
-        end)
-    end
-end
-
--- Scan Logic
-for _, obj in ipairs(workspace:GetDescendants()) do
-    if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then addEnemy(obj) end
-end
-workspace.DescendantAdded:Connect(function(descendant)
-    if descendant:IsA("Model") then
-        task.wait(0.1)
-        if descendant:FindFirstChildOfClass("Humanoid") then addEnemy(descendant) end
-    end
-end)
-
--- Helper check replaced by robust version above
-
-local lastTarget = nil -- Store last valid target for locking
-local lastTargetTime = 0
-local lastLoggedTarget = nil -- Store last NPC printed in debug logs
-
--- 2. Aim Logic
--- 2. Aim Logic
-local function getClosestTarget()
-    local closest = nil
-    local shortest3DDistance = math.huge
-    local mousePos = UserInputService:GetMouseLocation()
-    local lockedPosition = nil
-    
-    local debugTarget = nil
-    local shortestMouseDist = 200 -- Only debug if within 200px of mouse
-    
-    -- 1. PRE-PASS: Find NPC closest to mouse for debugging
-    if aimBotDebug then
-        for _, enemy in ipairs(validEnemies) do
-            if enemy and enemy.Parent and enemy:FindFirstChild("HumanoidRootPart") then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(enemy.HumanoidRootPart.Position)
-                if onScreen then
-                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                    if dist < shortestMouseDist then
-                        shortestMouseDist = dist
-                        debugTarget = enemy
+            Players.PlayerAdded:Connect(function(player)
+                if not antiStaffEnabled then return end
+                
+                -- 1. FAST CHECK (Milliseconds): Keywords and Creator ID
+                local keywords = {"mod", "admin", "staff", "dev", "helper", "owner"}
+                local name = string.lower(player.Name)
+                local display = string.lower(player.DisplayName)
+                local isCreator = (player.UserId == game.CreatorId)
+                
+                local matchesKeyword = false
+                for _, kw in ipairs(keywords) do
+                    if string.find(name, kw) or string.find(display, kw) then
+                        matchesKeyword = true
+                        handleStaffDetection(player, "Keyword Match: " .. kw)
+                        break
                     end
                 end
-            end
-        end
-    end
+                
+                if isCreator and not matchesKeyword then
+                    handleStaffDetection(player, "Game Creator")
+                end
+                
+                if isCreator or matchesKeyword then return end
 
-    local lastDebugPrint = 0
-    local lastDebugLog = 0
-    local function checkTarget(character)
-        if not character or character == LocalPlayer.Character then return end
-        
-        local isHovered = (character == debugTarget)
-        local function dLog(msg)
-            if aimBotDebug and isHovered then
-                -- Print ONLY ONCE when target changes
-                if lastLoggedTarget ~= character then
-                    print("-------------------------------------------")
-                    print(string.format("[AIM DEBUG] Target Found: %s", character.Name))
-                    print(string.format("[AIM DEBUG] Info: %s", msg))
-                    lastLoggedTarget = character
+                -- 2. SLOW CHECK (Background): Group Rank
+                task.spawn(function()
+                    task.wait(0.5) -- Short wait for Rank API stability
+                    if not antiStaffEnabled then return end
+                    if antiStaffGroupId > 0 then
+                        local s, rank = pcall(function() return player:GetRankInGroup(antiStaffGroupId) end)
+                        if s and rank >= 200 then
+                            handleStaffDetection(player, "Group Staff (Rank " .. rank .. ")")
+                        end
+                    end
+                end)
+            end)
+
+            local nameBlacklist = {
+                "npc", "hizoimviewmodel", "viewmodel", -- System
+                "adam_dgf", "victim", "decoration2", "aaaaa", "victor" -- Custom
+            }
+
+            local function isNPCBlacklisted(name)
+                if not name then return false end
+                local n = string.lower(name)
+                for _, pattern in ipairs(nameBlacklist) do
+                    if string.find(n, pattern) then return true end
+                end
+                return false
+            end
+
+            -- [ UI CONFIGURATION ]
+            local RESX, RESY = 900, 300 -- Compact Height for 3 columns
+            local THEME = {
+                Background = Color3.fromRGB(30, 30, 35),
+                Header = Color3.fromRGB(25, 25, 30),
+                Accent = Color3.fromRGB(0, 120, 215),
+                Text = Color3.fromRGB(240, 240, 240),
+                Description = Color3.fromRGB(180, 180, 180)
+            }
+
+            -- [ STARTUP CLEANUP ]
+            if CoreGui:FindFirstChild("ExaminationGUI") then CoreGui.ExaminationGUI:Destroy() end
+            if LocalPlayer.PlayerGui:FindFirstChild("ExaminationGUI") then LocalPlayer.PlayerGui.ExaminationGUI:Destroy() end
+            if CoreGui:FindFirstChild("ExaminationESP") then CoreGui.ExaminationESP:Destroy() end
+            if CoreGui:FindFirstChild("InfectESP") then CoreGui.InfectESP:Destroy() end
+            if CoreGui:FindFirstChild("AmmoESP") then CoreGui.AmmoESP:Destroy() end
+
+            -- [ MAIN UI CREATION ]
+            local ScreenGui = Instance.new("ScreenGui")
+            ScreenGui.Name = "ExaminationGUI"
+            ScreenGui.ResetOnSpawn = false
+
+            -- Security Fallback
+            if pcall(function() ScreenGui.Parent = CoreGui end) then
+                -- Parented to CoreGui
+            else
+                ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+            end
+
+            -- > Main Frame
+            local MainFrame = Instance.new("Frame")
+            MainFrame.Name = "MainFrame"
+            MainFrame.Size = UDim2.new(0, RESX, 0, RESY)
+            MainFrame.Position = UDim2.new(0.5, -RESX/2, 0.5, -RESY/2)
+            MainFrame.BackgroundColor3 = THEME.Background
+            MainFrame.BorderSizePixel = 0
+            MainFrame.Parent = ScreenGui
+
+            local UICorner = Instance.new("UICorner")
+            UICorner.CornerRadius = UDim.new(0, 8)
+            UICorner.Parent = MainFrame
+
+            -- Modal Fix (Force mouse unlock when GUI is visible)
+            local ModalFix = Instance.new("TextButton")
+            ModalFix.Name = "ModalFix"
+            ModalFix.Size = UDim2.new(0, 0, 0, 0)
+            ModalFix.BackgroundTransparency = 1
+            ModalFix.Text = ""
+            ModalFix.Modal = true
+            ModalFix.Parent = MainFrame
+
+            -- > Header
+            local Header = Instance.new("Frame")
+            Header.Name = "Header"
+            Header.Size = UDim2.new(1, 0, 0, 40)
+            Header.BackgroundColor3 = THEME.Header
+            Header.BorderSizePixel = 0
+            Header.Parent = MainFrame
+
+            local HeaderCorner = Instance.new("UICorner")
+            HeaderCorner.CornerRadius = UDim.new(0, 8)
+            HeaderCorner.Parent = Header
+
+            -- Header Cover (Square bottom corners)
+            local HeaderCover = Instance.new("Frame")
+            HeaderCover.Size = UDim2.new(1, 0, 0, 10)
+            HeaderCover.Position = UDim2.new(0, 0, 1, -10)
+            HeaderCover.BackgroundColor3 = THEME.Header
+            HeaderCover.BorderSizePixel = 0
+            HeaderCover.Parent = Header
+
+            -- Title
+            local Title = Instance.new("TextLabel")
+            Title.Name = "Title"
+            Title.Text = "Examination GUI"
+            Title.Font = Enum.Font.GothamBold
+            Title.TextSize = 18
+            Title.TextColor3 = THEME.Text
+            Title.Size = UDim2.new(1, -20, 1, 0)
+            Title.Position = UDim2.new(0, 10, 0, 0)
+            Title.BackgroundTransparency = 1
+            Title.TextXAlignment = Enum.TextXAlignment.Left
+            Title.Parent = Header
+
+            local TitleStroke = Instance.new("UIStroke")
+            TitleStroke.Thickness = 1.2
+            TitleStroke.Color = Color3.fromRGB(0, 0, 0)
+            TitleStroke.Transparency = 0.5
+            TitleStroke.Parent = Title
+
+            -- [ HEADER BUTTONS ]
+
+            -- 1. Rejoin Button (Center-Left)
+            local RejoinButton = Instance.new("TextButton")
+            RejoinButton.Name = "RejoinButton"
+            RejoinButton.Text = "Rejoin"
+            RejoinButton.Size = UDim2.new(0, 80, 0, 30)
+            RejoinButton.AnchorPoint = Vector2.new(1, 0.5)
+            RejoinButton.Position = UDim2.new(0.5, -5, 0.5, 0)
+            RejoinButton.BackgroundTransparency = 1
+            RejoinButton.TextColor3 = THEME.Description
+            RejoinButton.Font = Enum.Font.GothamBold
+            RejoinButton.TextSize = 16
+            RejoinButton.Parent = Header
+
+            local RejoinStroke = Instance.new("UIStroke")
+            RejoinStroke.Thickness = 0.5
+            RejoinStroke.Color = Color3.fromRGB(0, 0, 0)
+            RejoinStroke.Parent = RejoinButton
+
+            RejoinButton.MouseButton1Click:Connect(function()
+                if #Players:GetPlayers() <= 1 then
+                    LocalPlayer:Kick("\n\n(Rejoining...)")
+                    task.wait()
+                    TeleportService:Teleport(game.PlaceId, LocalPlayer)
+                else
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+                end
+            end)
+
+            -- 2. Reset Button (Center-Right)
+            local ResetButton = Instance.new("TextButton")
+            ResetButton.Name = "ResetButton"
+            ResetButton.Text = "Reset"
+            ResetButton.Size = UDim2.new(0, 80, 0, 30)
+            ResetButton.AnchorPoint = Vector2.new(0, 0.5)
+            ResetButton.Position = UDim2.new(0.5, 5, 0.5, 0)
+            ResetButton.BackgroundTransparency = 1
+            ResetButton.TextColor3 = THEME.Description
+            ResetButton.TextSize = 16
+            ResetButton.Font = Enum.Font.GothamBold
+            ResetButton.Parent = Header
+
+            local ResetStroke = Instance.new("UIStroke")
+            ResetStroke.Thickness = 0.5
+            ResetStroke.Color = Color3.fromRGB(0, 0, 0)
+            ResetStroke.Parent = ResetButton
+
+            ResetButton.MouseButton1Click:Connect(function()
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                    LocalPlayer.Character.Humanoid.Health = 0
+                end
+            end)
+
+            -- 3. Open Button (Floating Icon when Minimized)
+            local OpenButton = Instance.new("TextButton")
+            OpenButton.Name = "OpenButton"
+            OpenButton.Size = UDim2.new(0, 50, 0, 50)
+            OpenButton.Position = UDim2.new(0, 10, 0.5, -25)
+            OpenButton.BackgroundColor3 = THEME.Accent
+            OpenButton.TextColor3 = THEME.Text
+            OpenButton.Text = "Open"
+            OpenButton.Font = Enum.Font.GothamBold
+            OpenButton.TextSize = 14
+            OpenButton.Visible = false -- Hidden by default
+            OpenButton.Parent = ScreenGui
+
+            local OpenCorner = Instance.new("UICorner")
+            OpenCorner.CornerRadius = UDim.new(1, 0)
+            OpenCorner.Parent = OpenButton
+
+            OpenButton.MouseButton1Click:Connect(function()
+                MainFrame.Visible = true
+                OpenButton.Visible = false
+            end)
+
+            -- 4. Minimize Button (-)
+            local MinButton = Instance.new("TextButton")
+            MinButton.Name = "MinButton"
+            MinButton.Text = "-"
+            MinButton.Size = UDim2.new(0, 30, 0, 30)
+            MinButton.Position = UDim2.new(1, -70, 0, 5) -- Next to Close
+            MinButton.BackgroundTransparency = 1
+            MinButton.TextColor3 = THEME.Description
+            MinButton.TextSize = 24
+            MinButton.Font = Enum.Font.GothamBold
+            MinButton.Parent = Header
+
+            local MinStroke = Instance.new("UIStroke")
+            MinStroke.Thickness = 0.5
+            MinStroke.Color = Color3.fromRGB(0, 0, 0)
+            MinStroke.Parent = MinButton
+
+            MinButton.MouseButton1Click:Connect(function()
+                MainFrame.Visible = false
+                OpenButton.Visible = true
+            end)
+
+            -- 5. Close Button (X)
+            local CloseButton = Instance.new("TextButton")
+            CloseButton.Name = "CloseButton"
+            CloseButton.Text = "X"
+            CloseButton.Size = UDim2.new(0, 30, 0, 30)
+            CloseButton.Position = UDim2.new(1, -35, 0, 5)
+            CloseButton.BackgroundTransparency = 1
+            CloseButton.TextColor3 = THEME.Description
+            CloseButton.TextSize = 18
+            CloseButton.Font = Enum.Font.GothamBold
+            CloseButton.Parent = Header
+
+            local CloseStroke = Instance.new("UIStroke")
+            CloseStroke.Thickness = 0.5
+            CloseStroke.Color = Color3.fromRGB(0, 0, 0)
+            CloseStroke.Parent = CloseButton
+
+            -- [ TABS REMOVED ]
+
+            -- Content Container
+            local ContentContainer = Instance.new("Frame")
+            ContentContainer.Name = "ContentContainer"
+            ContentContainer.Size = UDim2.new(1, -20, 1, -50)
+            ContentContainer.Position = UDim2.new(0, 10, 0, 45)
+            ContentContainer.BackgroundTransparency = 1
+            ContentContainer.Parent = MainFrame
+
+            local ContentLayout = Instance.new("UIListLayout")
+            ContentLayout.FillDirection = Enum.FillDirection.Horizontal
+            ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            ContentLayout.Padding = UDim.new(0, 10)
+            ContentLayout.Parent = ContentContainer
+
+
+            -- [ DRAGGING LOGIC ]
+            local dragging, dragInput, dragStart, startPos
+
+            local function update(input)
+                local delta = input.Position - dragStart
+                MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+
+            Header.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    dragging = true
+                    dragStart = input.Position
+                    startPos = MainFrame.Position
+                    
+                    input.Changed:Connect(function()
+                        if input.UserInputState == Enum.UserInputState.End then
+                            dragging = false
+                        end
+                    end)
+                end
+            end)
+
+            Header.InputChanged:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                    dragInput = input
+                end
+            end)
+
+            UserInputService.InputChanged:Connect(function(input)
+                if input == dragInput and dragging then
+                    update(input)
+                end
+            end)
+
+
+            -- [ UI HELPERS ]
+            local currentTab = nil
+
+            local function createColumn(name)
+                local Column = Instance.new("Frame")
+                Column.Name = name .. "Column"
+                Column.Size = UDim2.new(0.32, 0, 1, 0) -- 3 Columns approx 33%
+                Column.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+                Column.BorderSizePixel = 0
+                Column.Parent = ContentContainer
+                
+                local Corner = Instance.new("UICorner")
+                Corner.CornerRadius = UDim.new(0, 6)
+                Corner.Parent = Column
+                
+                -- Column Header
+                local Header = Instance.new("TextLabel")
+                Header.Text = string.upper(name)
+                Header.Size = UDim2.new(1, 0, 0, 30)
+                Header.BackgroundTransparency = 1
+                Header.TextColor3 = THEME.Accent
+                Header.Font = Enum.Font.GothamBold
+                Header.TextSize = 14
+                Header.Parent = Column
+
+            local HeaderStroke = Instance.new("UIStroke")
+            HeaderStroke.Thickness = 1
+            HeaderStroke.Color = Color3.fromRGB(0, 0, 0)
+            HeaderStroke.Transparency = 0.8
+            HeaderStroke.Parent = Header
+
+                -- Scroll Area
+                local Page = Instance.new("ScrollingFrame")
+                Page.Name = "Page"
+                Page.Size = UDim2.new(1, 0, 1, -35)
+                Page.Position = UDim2.new(0, 0, 0, 35)
+                Page.BackgroundTransparency = 1
+                Page.BorderSizePixel = 0
+                Page.ScrollBarThickness = 2
+                Page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+                Page.CanvasSize = UDim2.new(0, 0, 0, 0)
+                Page.Parent = Column
+                
+                local UIList = Instance.new("UIListLayout")
+                UIList.Padding = UDim.new(0, 8)
+                UIList.SortOrder = Enum.SortOrder.LayoutOrder
+                UIList.Parent = Page
+                
+                local UIPad = Instance.new("UIPadding")
+                UIPad.PaddingLeft = UDim.new(0, 5)
+                UIPad.PaddingRight = UDim.new(0, 5)
+                UIPad.PaddingBottom = UDim.new(0, 5)
+                UIPad.Parent = Page
+                
+                return Page
+            end
+
+            local function createToggle(page, text, default, callback)
+                local Frame = Instance.new("Frame")
+                Frame.Size = UDim2.new(1, 0, 0, 40)
+                Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+                Frame.BorderSizePixel = 0
+                Frame.Parent = page
+                
+                local UICorner = Instance.new("UICorner")
+                UICorner.CornerRadius = UDim.new(0, 6)
+                UICorner.Parent = Frame
+                
+                local Label = Instance.new("TextLabel")
+                Label.Text = text
+                Label.Size = UDim2.new(1, -60, 1, 0)
+                Label.Position = UDim2.new(0, 10, 0, 0)
+                Label.BackgroundTransparency = 1
+                Label.TextColor3 = THEME.Text
+                Label.Font = Enum.Font.Gotham
+                Label.TextSize = 14
+                Label.TextXAlignment = Enum.TextXAlignment.Left
+                Label.Parent = Frame
+
+                local LabelStroke = Instance.new("UIStroke")
+                LabelStroke.Thickness = 0.5
+                LabelStroke.Color = Color3.fromRGB(0, 0, 0)
+                LabelStroke.Transparency = 0.7
+                LabelStroke.Parent = Label
+                
+                local Button = Instance.new("TextButton")
+                Button.Text = ""
+                Button.Size = UDim2.new(0, 40, 0, 20)
+                Button.Position = UDim2.new(1, -50, 0.5, -10)
+                Button.BackgroundColor3 = default and THEME.Accent or Color3.fromRGB(60, 60, 60)
+                Button.Parent = Frame
+                
+                local ButtonCorner = Instance.new("UICorner")
+                ButtonCorner.CornerRadius = UDim.new(1, 0)
+                ButtonCorner.Parent = Button
+
+                local Circle = Instance.new("Frame")
+                Circle.Size = UDim2.new(0, 16, 0, 16)
+                Circle.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+                Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                Circle.Parent = Button
+                
+                local CircleCorner = Instance.new("UICorner")
+                CircleCorner.CornerRadius = UDim.new(1, 0)
+                CircleCorner.Parent = Circle
+                
+                local toggled = default
+                
+                Button.MouseButton1Click:Connect(function()
+                    toggled = not toggled
+                    if toggled then
+                        Button.BackgroundColor3 = THEME.Accent
+                        Circle.Position = UDim2.new(1, -18, 0.5, -8)
+                    else
+                        Button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                        Circle.Position = UDim2.new(0, 2, 0.5, -8)
+                    end
+                    callback(toggled)
+                end)
+            end
+
+            local function createToggleInput(page, text, defaultVal, defaultToggle, callback)
+                local Frame = Instance.new("Frame")
+                Frame.Size = UDim2.new(1, 0, 0, 40)
+                Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+                Frame.BorderSizePixel = 0
+                Frame.Parent = page
+                
+                local UICorner = Instance.new("UICorner")
+                UICorner.CornerRadius = UDim.new(0, 6)
+                UICorner.Parent = Frame
+                
+                local Label = Instance.new("TextLabel")
+                Label.Text = text
+                Label.Size = UDim2.new(1, -110, 1, 0)
+                Label.Position = UDim2.new(0, 10, 0, 0)
+                Label.BackgroundTransparency = 1
+                Label.TextColor3 = THEME.Text
+                Label.Font = Enum.Font.Gotham
+                Label.TextSize = 14
+                Label.TextXAlignment = Enum.TextXAlignment.Left
+                Label.Parent = Frame
+
+                local LabelStroke = Instance.new("UIStroke")
+                LabelStroke.Thickness = 0.5
+                LabelStroke.Color = Color3.fromRGB(0, 0, 0)
+                LabelStroke.Transparency = 0.7
+                LabelStroke.Parent = Label
+                
+                -- Toggle Button
+                local ToggleButton = Instance.new("TextButton")
+                ToggleButton.Text = ""
+                ToggleButton.Size = UDim2.new(0, 40, 0, 20)
+                ToggleButton.Position = UDim2.new(1, -110, 0.5, -10)
+                ToggleButton.BackgroundColor3 = defaultToggle and THEME.Accent or Color3.fromRGB(60, 60, 60)
+                ToggleButton.Parent = Frame
+                
+                local ToggleCorner = Instance.new("UICorner")
+                ToggleCorner.CornerRadius = UDim.new(1, 0)
+                ToggleCorner.Parent = ToggleButton
+
+                local Circle = Instance.new("Frame")
+                Circle.Size = UDim2.new(0, 16, 0, 16)
+                Circle.Position = defaultToggle and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+                Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                Circle.Parent = ToggleButton
+                
+                local CircleCorner = Instance.new("UICorner")
+                CircleCorner.CornerRadius = UDim.new(1, 0)
+                CircleCorner.Parent = Circle
+                
+                -- Input Box
+                local InputBox = Instance.new("TextBox")
+                InputBox.Text = tostring(defaultVal)
+                InputBox.Size = UDim2.new(0, 60, 0, 24)
+                InputBox.Position = UDim2.new(1, -65, 0.5, -12)
+                InputBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+                InputBox.TextColor3 = THEME.Text
+                InputBox.Font = Enum.Font.Gotham
+                InputBox.TextSize = 14
+                InputBox.Parent = Frame
+
+                local BoxStroke = Instance.new("UIStroke")
+                BoxStroke.Thickness = 1
+                BoxStroke.Color = Color3.fromRGB(60, 60, 60)
+                BoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                BoxStroke.Parent = InputBox
+                
+                local BoxCorner = Instance.new("UICorner")
+                BoxCorner.CornerRadius = UDim.new(0, 4)
+                BoxCorner.Parent = InputBox
+                
+                -- Logic
+                local isToggled = defaultToggle
+                local currentVal = tonumber(defaultVal) or 0
+                
+                local function trigger()
+                    currentVal = tonumber(InputBox.Text) or currentVal
+                    callback(currentVal, isToggled)
+                end
+                
+                ToggleButton.MouseButton1Click:Connect(function()
+                    isToggled = not isToggled
+                    if isToggled then
+                        ToggleButton.BackgroundColor3 = THEME.Accent
+                        Circle.Position = UDim2.new(1, -18, 0.5, -8)
+                    else
+                        ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                        Circle.Position = UDim2.new(0, 2, 0.5, -8)
+                    end
+                    trigger()
+                end)
+                
+                InputBox.FocusLost:Connect(function()
+                    local n = tonumber(InputBox.Text)
+                    if n then
+                        currentVal = n
+                        trigger()
+                    else
+                        InputBox.Text = tostring(currentVal)
+                    end
+                end)
+                
+                local function set(val, toggle)
+                    if val ~= nil then
+                        currentVal = val
+                        InputBox.Text = tostring(val)
+                    end
+                    if toggle ~= nil then
+                        isToggled = toggle
+                        if isToggled then
+                            ToggleButton.BackgroundColor3 = THEME.Accent
+                            Circle.Position = UDim2.new(1, -18, 0.5, -8)
+                        else
+                            ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                            Circle.Position = UDim2.new(0, 2, 0.5, -8)
+                        end
+                    end
+                    trigger()
+                end
+                
+                return set
+            end
+
+
+            -- [ TABS & LOGIC ]
+            -- [ COLUMNS & LOGIC ]
+            local LocalTab = createColumn("Players")
+            local CombatTab = createColumn("Combat")
+            local VisualsTab = createColumn("Visuals")
+
+
+            -- ====================
+            -- CATEGORY: LOCAL PLAYER
+            -- ====================
+
+            -- 1. WalkSpeed
+            local wsConnection = nil
+            createToggleInput(LocalTab, "WalkSpeed", 16, false, function(val, state)
+                if wsConnection then wsConnection:Disconnect() wsConnection = nil end
+                
+                if state then
+                    walkSpeed = tonumber(val) or 16
+                    
+                    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                        LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed
+                    end
+                    
+                    wsConnection = RunService.RenderStepped:Connect(function()
+                        if not ScreenGui.Parent then 
+                            if wsConnection then wsConnection:Disconnect() end
+                            return
+                        end
+                        
+                        if not flyEnabled and LocalPlayer.Character then
+                            local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+                            if hum and hum.WalkSpeed ~= walkSpeed then
+                                hum.WalkSpeed = walkSpeed
+                            end
+                        end
+                    end)
+                else
+                    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                        LocalPlayer.Character.Humanoid.WalkSpeed = 16
+                    end
+                end
+            end)
+
+            -- 1.1 Anti-Staff Protection
+            createToggle(LocalTab, "Anti-Staff Protection", false, function(state)
+                antiStaffEnabled = state
+                antiStaffAutoLeave = state -- Combined: Enabling detection also enables auto-leave
+                antiStaffGroupId = 34159688 -- Hardcoded for this game
+                
+                if state then
+                    -- Check existing players
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        local isStaff, reason = detectStaff(plr)
+                        if isStaff then handleStaffDetection(plr, reason) end
+                    end
+                end
+            end)
+
+            -- 2. Fly System
+            flySpeed = 50
+            flyBodyGyro, flyBodyVelocity = nil, nil
+
+            local function stopFly()
+                if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
+                if flyBodyVelocity then flyBodyVelocity:Destroy() flyBodyVelocity = nil end
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                    LocalPlayer.Character.Humanoid.PlatformStand = false
+                    LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed -- Restore Speed
                 end
             end
-        end
 
-        -- 1. PRE-FILTER: Distance
-        local root = character:FindFirstChild("HumanoidRootPart")
-        if not root then 
-            dLog("Ignored - No RootPart")
-            return 
-        end
-        
-        local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-        local dist3D = (myPos - root.Position).Magnitude
-        
-        local isBoss = string.find(string.lower(character.Name), "chimera") or string.find(string.lower(character.Name), "boss")
-        local maxRange = isBoss and 2000 or 300
-        
-        if dist3D > maxRange then 
-            dLog("Ignored - Out of Range (" .. math.floor(dist3D) .. " studs)")
-            return 
-        end
-        
-        -- 2. PRE-FILTER: On Screen & FOV
-        local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
-        if not onScreen then 
-            dLog("Ignored - Off Screen")
-            return 
-        end
-        
-        if not lastTarget then
-            local mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-            if mouseDist > aimFOV then 
-                dLog("Ignored - Outside FOV (Dist: " .. math.floor(mouseDist) .. ")")
-                return 
+            local function startFly()
+                local char = LocalPlayer.Character
+                if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+                
+                local hrp = char.HumanoidRootPart
+                local humanoid = char:FindFirstChild("Humanoid")
+                
+                if flyBodyGyro or flyBodyVelocity then return end
+                
+                flyBodyGyro = Instance.new("BodyGyro")
+                flyBodyGyro.P = 9e4
+                flyBodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+                flyBodyGyro.cframe = hrp.CFrame
+                flyBodyGyro.Parent = hrp
+                
+                flyBodyVelocity = Instance.new("BodyVelocity")
+                flyBodyVelocity.velocity = Vector3.new(0,0.1,0)
+                flyBodyVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
+                flyBodyVelocity.Parent = hrp
+                
+                humanoid.PlatformStand = true
+                humanoid.WalkSpeed = 16 -- Reset to default to prevent Camera Tilt from game scripts
+                
+                task.spawn(function()
+                    while flyEnabled and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 do
+                        if not ScreenGui.Parent then stopFly() break end
+                        if not flyBodyGyro or not flyBodyGyro.Parent then break end
+                        
+                        -- Lock Gyro to Camera LookVector but Keep Upright (Removes Tilt/Roll)
+                        flyBodyGyro.cframe = CFrame.lookAt(hrp.Position, hrp.Position + Camera.CFrame.LookVector)
+                        
+                        local vel = Vector3.new()
+                        if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + Camera.CFrame.LookVector * flySpeed end
+                        if UserInputService:IsKeyDown(Enum.KeyCode.S) then vel = vel - Camera.CFrame.LookVector * flySpeed end
+                        if UserInputService:IsKeyDown(Enum.KeyCode.D) then vel = vel + Camera.CFrame.RightVector * flySpeed end
+                        if UserInputService:IsKeyDown(Enum.KeyCode.A) then vel = vel - Camera.CFrame.RightVector * flySpeed end
+                        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0, 1, 0) * flySpeed end
+                        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then vel = vel - Vector3.new(0, 1, 0) * flySpeed end
+                        
+                        flyBodyVelocity.velocity = vel
+                        RunService.RenderStepped:Wait()
+                    end
+                end)
             end
-        end
 
-        -- 3. STATE CHECKS
-        local humanoid = character:FindFirstChild("Humanoid")
-        if not humanoid then
-            dLog("Ignored - No Humanoid")
-            return
-        end
-        if humanoid.Health <= 0 then 
-            dLog("Ignored - Dead")
-            return 
-        end
-        
-        -- BLACKLIST (Friendlies)
-        local n = string.lower(character.Name)
-        if n == "npc" or string.find(n, "hizoimviewmodel") or string.find(n, "viewmodel") then 
-            dLog("Ignored - Blacklisted Name")
-            return 
-        end
-        
-        -- 4. VISIBILITY CHECK (Tiered)
-        local origin = Camera.CFrame.Position
-        local rayParams = RaycastParams.new()
-        rayParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-        rayParams.IgnoreWater = true
-        
-        local function isPartVisible(part, offset, depth)
-            if not part then return false end
-            depth = depth or 0
-            if depth > 5 then return false end
+            local toggleFly = createToggleInput(LocalTab, "Fly Mode (F)", 50, false, function(val, state)
+                flySpeed = val
+                flyEnabled = state
+                if flyEnabled then startFly() else stopFly() end
+            end)
 
-            local tPos = offset and (part.Position + offset) or part.Position
-            local direction = (tPos - origin)
-            
-            local result = workspace:Raycast(origin, direction, rayParams)
-            if not result then return true, tPos end 
-            
-            local hit = result.Instance
-            
-            -- RIG CHECK: Is this part welded to the character? (Handles guns/hats in separate folders)
-            local isPartOfChar = hit:IsDescendantOf(character)
-            if not isPartOfChar then
-                for _, joint in ipairs(hit:GetJoints()) do
-                    if joint:IsA("JointInstance") then
-                        if (joint.Part0 and joint.Part0:IsDescendantOf(character)) or 
-                           (joint.Part1 and joint.Part1:IsDescendantOf(character)) then
-                            isPartOfChar = true
-                            break
+            -- Keybind for Fly (F)
+            UserInputService.InputBegan:Connect(function(input, gpe)
+                if gpe then return end
+                if input.KeyCode == Enum.KeyCode.F then
+                    toggleFly(nil, not flyEnabled)
+                end
+            end)
+
+            -- 3. FullBright
+            local fullBrightConnection = nil
+            createToggle(VisualsTab, "FullBright", false, function(state)
+                if state then
+                    fullBrightConnection = RunService.RenderStepped:Connect(function()
+                        if not ScreenGui.Parent then
+                            if fullBrightConnection then fullBrightConnection:Disconnect() end
+                            return
+                        end
+                        Lighting.Brightness = 2
+                        Lighting.ClockTime = 14
+                        Lighting.FogEnd = 100000
+                        Lighting.GlobalShadows = false
+                        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+                    end)
+                else
+                    if fullBrightConnection then
+                        fullBrightConnection:Disconnect()
+                        fullBrightConnection = nil
+                        Lighting.Brightness = 1
+                        Lighting.GlobalShadows = true
+                    end
+                end
+            end)
+
+            -- 4. Noclip (Walk Through Walls)
+            local noclipConnection = nil
+            createToggle(LocalTab, "Noclip", false, function(state)
+                if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
+                
+                if state then
+                    noclipConnection = RunService.Stepped:Connect(function()
+                        if not ScreenGui.Parent then -- Suicide check
+                            if noclipConnection then noclipConnection:Disconnect() end
+                            return
+                        end
+                        
+                        local char = LocalPlayer.Character
+                        if char then
+                            for _, part in ipairs(char:GetDescendants()) do
+                                if part:IsA("BasePart") and part.CanCollide then
+                                    part.CanCollide = false
+                                end
+                            end
+                        end
+                    end)
+                else
+                    -- RESET COLLISIONS IMMEDIATELY
+                    local char = LocalPlayer.Character
+                    if char then
+                        for _, part in ipairs(char:GetDescendants()) do
+                            if part:IsA("BasePart") then
+                                -- WHITELIST: Only restore collision for CORE parts
+                                -- Restoring collision on limbs (Arms/Legs) causes FLING due to self-collision
+                                local restoreList = {
+                                    ["Head"] = true,
+                                    ["HumanoidRootPart"] = true,
+                                    ["Torso"] = true,
+                                    ["UpperTorso"] = true,
+                                    ["LowerTorso"] = true
+                                }
+                                if restoreList[part.Name] then
+                                    part.CanCollide = true
+                                end
+                            end
                         end
                     end
                 end
-            end
+            end)
 
-            if isPartOfChar or hit == part then
-                return true, tPos 
-            end
-            
-            -- PENETRATION LOGIC: Only ignore transparency/non-collidable now
-            if hit.Transparency > 0.5 or not hit.CanCollide then
-                local oldFilter = rayParams.FilterDescendantsInstances
-                table.insert(oldFilter, hit)
-                rayParams.FilterDescendantsInstances = oldFilter
-                return isPartVisible(part, offset, depth + 1) 
-            end
-            
-            dLog("Blocked by: " .. hit.Name)
-            return false 
-        end
-        
-        local currentTargetPart = nil
-        local currentLockedPos = nil
-        
-        -- Primary Parts
-        local primaryParts = {"Head", "UpperTorso", "HumanoidRootPart"}
-        for _, name in ipairs(primaryParts) do
-            local part = character:FindFirstChild(name)
-            local visible, pos = isPartVisible(part)
-            if visible then
-                currentTargetPart, currentLockedPos = part, pos
-                break
-            end
-        end
-        
-        if not currentTargetPart then
-            local detailParts = {"RightUpperArm", "LeftUpperArm", "RightLowerArm", "LeftLowerArm"}
-            for _, name in ipairs(detailParts) do
-                local part = character:FindFirstChild(name)
-                if isPartVisible(part) then
-                    currentTargetPart, currentLockedPos = part, part.Position
-                    break
+
+
+
+
+            -- ====================
+            -- CATEGORY: COMBAT
+            -- ====================
+
+            local aimEnabled = false
+            local aimKey = Enum.UserInputType.MouseButton2
+            local aimFOV = 200
+            local aimSmoothness = 0.8
+            local aimRightOffset = 0.7
+            local aimUpOffset = 0.4
+            local aimBotDebug = false
+            local validEnemies = {}
+            local entityCache = {} -- Cache for NPC metadata (Shield, Mutant, etc.)
+
+            -- HELPER: High Mobility Detection (RSU/Gunner Rollers)
+            local function isHighMobilityEntity(model)
+                if not model then return false end
+                local n = string.lower(model.Name)
+                local mobileKeywords = {"rsu", "gunner", "lurker", "lab", "scientist", "hazmat", "stalker", "ninja", "agile", "mutant", "subject", "specimen", "research", "hazard", "white", "heavy", "gas", "mask", "tactical", "soldier", "commando", "elite", "guard", "security", "unit", "yellow"}
+                for _, kw in ipairs(mobileKeywords) do
+                    if string.find(n, kw) then return true end
                 end
+                return false
             end
-        end
 
-        if currentTargetPart then
-            dLog("Target Valid!")
-            if dist3D < shortest3DDistance then
-                closest = currentTargetPart
-                lockedPosition = currentLockedPos
-                shortest3DDistance = dist3D
-                lastTarget = character
-            end
-        end
-    end
-
-    -- PRIORITIZE LAST TARGET
-    if lastTarget and lastTarget.Parent and lastTarget:FindFirstChild("Humanoid") then
-        if lastTarget.Humanoid.Health > 0 then
-            checkTarget(lastTarget)
-            if closest then return closest, lockedPosition end
-        end
-    end
-    
-    lastTarget = nil
-
-    for _, enemy in ipairs(validEnemies) do
-        checkTarget(enemy)
-    end
-    
-    return closest, lockedPosition
-end
-
--- 3. Aim Loop
-local isAiming = false
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if input.UserInputType == aimKey then isAiming = true end
-end)
-UserInputService.InputEnded:Connect(function(input, gpe)
-    if input.UserInputType == aimKey then 
-        isAiming = false 
-        lastTarget = nil -- Reset target when releasing mouse
-        lastLoggedTarget = nil -- Reset debug log state to allow re-logging same NPC
-    end
-end)
-
-RunService.RenderStepped:Connect(function()
-    if not ScreenGui.Parent then return end
-    if aimEnabled then
-        if isAiming then
-            local targetPart, targetPos = getClosestTarget()
-            if targetPart and targetPos then
-                local currentCF = Camera.CFrame
-                local targetCF = CFrame.new(currentCF.Position, targetPos)
-                Camera.CFrame = currentCF:Lerp(targetCF, aimSmoothness)
-            end
-        end
-    end
-end)
-
-createToggle(CombatTab, "Aim Bot", false, function(state)
-    aimEnabled = state
-end)
-
-createToggle(CombatTab, "Aim Debug (F9)", false, function(state)
-    aimBotDebug = state
-end)
-
-
--- ====================
--- CATEGORY: VISUALS
--- ====================
-
--- 1. Player ESP
--- 1. Player ESP (Optimized Highlight Manager)
-local espEnabled = false
-local espContainer = Instance.new("Folder")
-espContainer.Name = "ExaminationESP"
-espContainer.Parent = CoreGui
-
-local potentialPlayerTargets = {}
-
-local function clearESP() 
-    espContainer:ClearAllChildren() 
-    potentialPlayerTargets = {}
-end
-
-local function managePlayerHighlights()
-    while espEnabled do
-        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            task.wait(1)
-            continue
-        end
-        
-        local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-        
-        for player, _ in pairs(potentialPlayerTargets) do
-            if not player or not player.Parent then 
-                potentialPlayerTargets[player] = nil
-                continue 
-            end
-            
-            local char = player.Character
-            if not char or not char:IsDescendantOf(game) then 
-                continue 
-            end
-            
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if not root then continue end
-            
-            local dist = (root.Position - myPos).Magnitude
-            local hl = char:FindFirstChild("ESPHighlight")
-            
-            -- SLOT MANAGEMENT: Only highlight if < 150 studs
-            if dist < 150 then
-                if not hl then
-                    hl = Instance.new("Highlight")
-                    hl.Name = "ESPHighlight"
-                    hl.Adornee = char
-                    hl.FillColor = Color3.fromRGB(0, 150, 255) -- Blue
-                    hl.OutlineColor = Color3.fromRGB(0, 150, 255) -- Blue Outline
-                    hl.FillTransparency = 1 -- Outline only
-                    hl.OutlineTransparency = 0
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Parent = char 
-                    
-                    -- Failsafe Cleanup
-                    char.AncestryChanged:Connect(function()
-                        if not char:IsDescendantOf(game) and hl then hl:Destroy() end
-                    end)
+            local function isMutantEntity(model)
+                if not model then return false end
+                local n = string.lower(model.Name)
+                if string.find(n, "lab") or string.find(n, "mutant") or string.find(n, "subject") or 
+                string.find(n, "scientist") or string.find(n, "hazmat") or string.find(n, "yellow") or
+                string.find(n, "white") or string.find(n, "gas") or string.find(n, "mask") or
+                string.find(n, "worker") or string.find(n, "engineer") or string.find(n, "helmet") or
+                string.find(n, "heavy") or string.find(n, "specialist") or string.find(n, "red") or
+                string.find(n, "vest") or string.find(n, "armored") or string.find(n, "guard") or
+                string.find(n, "fireriser") or string.find(n, "fire") or string.find(n, "riser") or
+                string.find(n, "A9") or string.find(n, "B9") or string.find(n, "A15") then
+                    return true
                 end
-            else
-                -- Too far, free up the slot for Bosses/Nearby Enemies
-                if hl then hl:Destroy() end
-            end
-        end
-        task.wait(0.2)
-    end
-end
-
-local function addESP(player)
-    if player == LocalPlayer then return end
-    potentialPlayerTargets[player] = true
-end
-
-createToggle(VisualsTab, "Player ESP", false, function(state)
-    espEnabled = state
-    if state then
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer then addESP(plr) end
-        end
-        Players.PlayerAdded:Connect(function(plr)
-            if espEnabled and plr ~= LocalPlayer then addESP(plr) end
-        end)
-        task.spawn(managePlayerHighlights)
-    else
-        clearESP()
-        -- Loop handles cleanup of individual highlights next cycle or manually here if needed
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
-                plr.Character.ESPHighlight:Destroy()
-            end
-        end
-    end
-end)
-
--- 2. Infect ESP (Enemies) - Optimized Distance Limit
-local infectEspEnabled = false
-local infectEspContainer = Instance.new("Folder")
-infectEspContainer.Name = "InfectESP"
-infectEspContainer.Parent = CoreGui
-
--- Track Potential Enemies for ESP
-local potentialEspTargets = {} 
-
-local function clearInfectESP() 
-    infectEspContainer:ClearAllChildren() 
-    -- Manual Cleanup because Highlights are now parented to Models
-    for model, _ in pairs(potentialEspTargets) do
-        if model and model:FindFirstChild("InfectHighlight") then
-            model.InfectHighlight:Destroy()
-        end
-    end
-    potentialEspTargets = {}
-end
-
--- HELPER: Boss Detection for ESP/Aim
-local function isBossEntity(model)
-    if not model then return false end
-    local n = string.lower(model.Name)
-    if string.find(n, "chimera") or string.find(n, "boss") then return true end
-    
-    -- Check for special boss parts (Claw/Talon)
-    for _, child in ipairs(model:GetChildren()) do
-        if child:IsA("BasePart") or child:IsA("Model") then
-            local cn = string.lower(child.Name)
-            if string.find(cn, "claw") or string.find(cn, "talon") then return true end
-        end
-    end
-    return false
-end
-
--- HELPER: Elite Enemy Detection (Shotgun, Chainsaw, etc.)
-local function isEliteEntity(model)
-    if not model then return false end
-    local n = string.lower(model.Name)
-    if string.find(n, "shotgun") or string.find(n, "chainsaw") or string.find(n, "saw") then return true end
-    
-    -- Check Tool/Weapon name
-    for _, child in ipairs(model:GetChildren()) do
-        if child:IsA("Tool") or child:IsA("Model") or child:IsA("BasePart") then
-            local cn = string.lower(child.Name)
-            if string.find(cn, "shotgun") or string.find(cn, "chainsaw") or string.find(cn, "saw") then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local function manageInfectHighlights()
-    local printedBossDebug = {} -- Debounce for debug prints
-    
-    while infectEspEnabled do
-        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            task.wait(1)
-            continue
-        end
-        
-        local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-        
-        for model, _ in pairs(potentialEspTargets) do
-            if not model.Parent then 
-                potentialEspTargets[model] = nil 
-                continue 
+                return false
             end
 
-            -- STRICT FAILSAFE: Remove Self
-            if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then
-                potentialEspTargets[model] = nil
-                local highlight = model:FindFirstChild("InfectHighlight")
-                if highlight then highlight:Destroy() end
-                continue
-            end
-            
-            local root = model:FindFirstChild("HumanoidRootPart")
-            local humanoid = model:FindFirstChildOfClass("Humanoid")
-            
-            -- SKIP DEAD/INVALID
-            if not root or not humanoid or humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then
-                local highlight = model:FindFirstChild("InfectHighlight")
-                if highlight then highlight:Destroy() end
-                continue
-            end
-
-            if root then
-                local dist = (root.Position - myPos).Magnitude
+            -- HELPER: Boss Detection for ESP/Aim
+            local function isBossEntity(model)
+                if not model then return false end
+                local n = string.lower(model.Name)
+                if string.find(n, "chimera") or string.find(n, "boss") then return true end
                 
-                -- Distance Sanity Check (Don't remove Boss ESP even if close)
-                if not isBossEntity(model) and dist < 2 then 
-                    potentialEspTargets[model] = nil 
-                    local highlight = model:FindFirstChild("InfectHighlight")
-                    if highlight then highlight:Destroy() end
-                    continue
-                end
-
-                -- BOSS CHECK (Priority)
-                local isBoss = isBossEntity(model)
-
-                local maxDist = isBoss and 2000 or 150 -- Bosses have near infinite range
-
-                local highlight = model:FindFirstChild("InfectHighlight")
-                
-                if dist < maxDist then
-                    local hl = highlight
-                    if not hl then
-                        -- Create Highlight
-                        hl = Instance.new("Highlight")
-                        hl.Name = "InfectHighlight"
-                        hl.Adornee = model
-                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        hl.FillTransparency = 0.85
-                        hl.OutlineTransparency = 0
-                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        hl.Parent = model
+                -- Check for special boss parts (Claw/Talon)
+                for _, child in ipairs(model:GetChildren()) do
+                    if child:IsA("BasePart") or child:IsA("Model") then
+                        local cn = string.lower(child.Name)
+                        if string.find(cn, "claw") or string.find(cn, "talon") then return true end
                     end
+                end
+                return false
+            end
 
-                    -- DYNAMIC STYLE UPDATE (Boss = Purple, Elite = Orange, Default = Red Outline)
-                    local isElite = isEliteEntity(model)
-                    
-                    if isBoss then
-                        hl.FillColor = Color3.fromRGB(130, 0, 255)
-                        hl.OutlineColor = Color3.fromRGB(200, 100, 255)
-                        hl.FillTransparency = 1 -- Outline only
-                    elseif isElite then
-                        hl.FillColor = Color3.fromRGB(255, 140, 0) -- Orange
-                        hl.OutlineColor = Color3.fromRGB(255, 200, 0) -- Brighter Orange Outline
-                        hl.FillTransparency = 1 -- Outline only
+            -- HELPER: Shield Detection for ESP/Aim
+            local function isShieldEntity(model)
+                if not model then return false end
+                for _, child in ipairs(model:GetDescendants()) do
+                    if child:IsA("BasePart") or child:IsA("Model") then
+                        local cn = string.lower(child.Name)
+                        -- BLACKLIST: Ignore face shield, gas mask, protective glass
+                        if string.find(cn, "face") or string.find(cn, "mask") or string.find(cn, "glass") or string.find(cn, "mặt") then
+                            -- Skip
+                        elseif string.find(cn, "shield") or string.find(cn, "khiên") or string.find(cn, "riot") then 
+                            return true 
+                        end
+                    end
+                end
+                return false
+            end
+
+            -- HELPER: Elite Enemy Detection (Shotgun, Chainsaw, etc.)
+            local function isEliteEntity(model)
+                if not model then return false end
+                local n = string.lower(model.Name)
+                if string.find(n, "shotgun") or string.find(n, "chainsaw") or string.find(n, "saw") then return true end
+                
+                -- Check Tool/Weapon name
+                for _, child in ipairs(model:GetChildren()) do
+                    if child:IsA("Tool") or child:IsA("Model") or child:IsA("BasePart") then
+                        local cn = string.lower(child.Name)
+                        if string.find(cn, "shotgun") or string.find(cn, "chainsaw") or string.find(cn, "saw") then
+                            return true
+                        end
+                    end
+                end
+                return false
+            end
+
+            -- HELPER: Weapon Detection (Tools + Custom Names)
+            local function hasWeapon(char)
+                if not char then return false end
+                
+                -- 0. BOSS NAME CHECK
+                local charName = string.lower(char.Name)
+                if string.find(charName, "chimera") or string.find(charName, "boss") then return true, "BossName" end
+
+                -- 0.1 BOSS WEAPON CHECK (Priority)
+                for _, child in ipairs(char:GetChildren()) do
+                    if child:IsA("BasePart") or child:IsA("Model") then
+                        local n = string.lower(child.Name)
+                        if string.find(n, "claw") or string.find(n, "talon") or string.find(n, "sting") then return true, "BossPart" end
+                    end
+                end
+
+                -- 1. Standard Tool
+                local tool = char:FindFirstChildOfClass("Tool")
+                if tool then return true, tool.Name end
+                
+                -- 2. Custom Named Parts/Models (e.g. Chainsaw)
+                local weaponKeywords = {
+                    "chainsaw", "weapon", "gun", "rifle", "axe", "blade", "knife",
+                    "pistol", "revolver", "g17", "m9", "glock",
+                    "shotgun", "spas", "remington",
+                    "smg", "mp5", "uzi",
+                    "sniper", "awp", "barrett",
+                    "bow", "crossbow",
+                    "sword", "katana", "saber",
+                    "claw", "talon", "sting", -- BOSS KEYWORDS
+                    "shield", "guard", "defense", -- SHIELD MONSTER KEYWORDS
+                    "bite", "scratch", "claw", "fist", "attack" -- MUTANT KEYWORDS
+                }
+
+                -- Recursive Check (GetDescendants) to find nested weapons
+                for _, child in ipairs(char:GetDescendants()) do
+                    if child:IsA("BasePart") or child:IsA("Model") then
+                        local name = string.lower(child.Name)
+                        
+                        -- BLACKLIST: Ignore holsters, pouches, bags
+                        if string.find(name, "holster") or string.find(name, "pouch") or string.find(name, "bag") or string.find(name, "sheath") then
+                            -- Skip this part (Safe)
+                        else
+                            -- WHITELIST CHECK
+                            for _, keyword in ipairs(weaponKeywords) do
+                                if string.find(name, keyword) then return true, child.Name end
+                            end
+                        end
+                    end
+                end
+                return false
+            end
+
+            -- 1. Enemy Tracker (Smart Scanner)
+            local function addEnemy(model)
+                if model == LocalPlayer.Character then return end
+                if Players:GetPlayerFromCharacter(model) then return end
+                if not model:FindFirstChildOfClass("Humanoid") then return end
+                if isNPCBlacklisted(model.Name) then return end -- Fix: Ignore Blacklisted NPCs
+                if table.find(validEnemies, model) then return end
+
+                table.insert(validEnemies, model)
+                
+                -- PRE-CACHE METADATA (Performance Optimization)
+                -- This avoids calling GetDescendants and string operations every frame
+                local metadata = {
+                    isMutant = isMutantEntity(model),
+                    isBoss = isBossEntity(model),
+                    isShield = isShieldEntity(model),
+                    elite = isEliteEntity(model)
+                }
+                entityCache[model] = metadata
+                model.AncestryChanged:Connect(function()
+                    if not model:IsDescendantOf(game) then
+                        local index = table.find(validEnemies, model)
+                        if index then table.remove(validEnemies, index) end
+                        entityCache[model] = nil -- Clean up cache too
+                    end
+                end)
+                -- Removing from validEnemies on Died is now handled in the main Aim loop
+                -- to allow for "Death State Bypassing" during dodge rolls.
+            end
+
+            -- Scan Logic
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then addEnemy(obj) end
+            end
+            workspace.DescendantAdded:Connect(function(descendant)
+                if descendant:IsA("Model") then
+                    task.wait(0.1)
+                    if descendant:FindFirstChildOfClass("Humanoid") then addEnemy(descendant) end
+                end
+            end)
+
+            -- Helper check replaced by robust version above
+
+            local lastTarget = nil -- Store last valid target for locking
+            local lastTargetTime = 0
+            local lastLoggedTarget = nil -- Store last NPC printed in debug logs
+
+            -- 2. Aim Logic
+            local globalRayParams = RaycastParams.new()
+            globalRayParams.FilterType = Enum.RaycastFilterType.Exclude
+            globalRayParams.IgnoreWater = true
+
+            -- 2. Aim Logic (Optimized)
+        -- Helper function extracted to reduce register pressure in getClosestTarget
+        local function checkPartVisibility(part, targetModel, myChar, rayParams)
+            if not part then return false end
+            local origin = Camera.CFrame.Position
+            local tPos = part.Position
+            local direction = (tPos - origin)
+            
+            local currentFilter = {myChar, Camera}
+            for i = 1, 4 do 
+                rayParams.FilterDescendantsInstances = currentFilter
+                local result = workspace:Raycast(origin, direction, rayParams)
+                if not result then return true, tPos end
+                
+                local hit = result.Instance
+                local isPartOfChar = hit:IsDescendantOf(targetModel)
+                
+                local lowerName = string.lower(hit.Name)
+                if string.find(lowerName, "shield") or string.find(lowerName, "khiên") then 
+                    -- Fix: If it's THEIR shield, we consider it "visible" enough to lock
+                    if isPartOfChar then
+                        return true, tPos
                     else
-                        hl.FillColor = Color3.fromRGB(255, 0, 0)
-                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        hl.FillTransparency = 1 -- Outline only
+                        return false 
+                    end
+                end
+                
+                if isPartOfChar or hit == part then return true, tPos end
+                
+                if hit.Transparency > 0.7 or not hit.CanCollide then
+                    table.insert(currentFilter, hit)
+                else
+                    return false
+                end
+            end
+            return false
+        end
+
+        -- 2. Aim Logic (Optimized)
+        local function getClosestTarget()
+            local mousePos = UserInputService:GetMouseLocation()
+            local candidates = {}
+            local char = LocalPlayer.Character
+            local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+            if not myRoot then return end
+            local myPos = myRoot.Position
+
+            -- PASS 1: Lightweight Screening (2D Proximity & Status)
+            for _, enemy in ipairs(validEnemies) do
+                if not enemy or enemy == char then continue end
+                local root = enemy:FindFirstChild("HumanoidRootPart")
+                local humanoid = nil
+                for _, c in ipairs(enemy:GetChildren()) do
+                    if c:IsA("Humanoid") and c.Health > 0 then
+                        humanoid = c
+                        break
+                    end
+                end
+                if not humanoid then humanoid = enemy:FindFirstChild("Humanoid") end
+                if not root or not humanoid then continue end
+
+                -- Metadata Cache
+                local meta = entityCache[enemy]
+                if not meta then
+                    meta = {
+                        isMutant = isMutantEntity(enemy),
+                        isBoss = isBossEntity(enemy),
+                        isShield = isShieldEntity(enemy),
+                        isHighMob = isHighMobilityEntity(enemy)
+                    }
+                    entityCache[enemy] = meta
+                end
+
+                -- Distance & FOV Check
+                local dist3D = (myPos - root.Position).Magnitude
+                local maxRange = meta.isBoss and 2000 or 400
+                if dist3D > maxRange then continue end
+
+                local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
+                
+                if not onScreen then continue end
+
+                local mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if mouseDist > aimFOV then continue end
+
+                -- Death/State Logic (Strict Filter)
+                local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
+                if isDead then
+                    local velocityMag = root.Velocity.Magnitude
+                    -- Strict Bypass for High-Speed Rolls
+                    if velocityMag <= 25.0 then continue end
+                end
+
+                if root.Anchored and not hasWeapon(enemy) then continue end
+                
+                table.insert(candidates, {
+                    model = enemy,
+                    dist = mouseDist,
+                    root = root,
+                    humanoid = humanoid,
+                    meta = meta,
+                    isDead = isDead
+                })
+            end
+
+            -- Sort by Mouse Distance (Closest to crosshair first)
+            table.sort(candidates, function(a, b) return a.dist < b.dist end)
+
+            -- PASS 2: Heavy Physics (Visibility) on Top Candidates
+            globalRayParams.FilterDescendantsInstances = {char, Camera}
+            
+            for _, cand in ipairs(candidates) do
+                local character = cand.model
+                local meta = cand.meta
+                
+                -- Check Targets using extracted helper
+                local currentTargetPart = nil
+                local currentLockedPos = nil
+                
+                local targets = {"Head", "UpperTorso", "HumanoidRootPart"}
+                for _, name in ipairs(targets) do
+                    local p = character:FindFirstChild(name)
+                    local vis, pos = checkPartVisibility(p, character, char, globalRayParams)
+                    if vis then currentTargetPart, currentLockedPos = p, pos; break end
+                end
+                
+                if not currentTargetPart then
+                    local detailParts = {"RightUpperArm", "LeftUpperArm", "RightLowerArm", "LeftLowerArm", "RightLowerLeg", "LeftLowerLeg"}
+                    for _, name in ipairs(detailParts) do
+                        local part = character:FindFirstChild(name)
+                        local vis, pos = checkPartVisibility(part, character, char, globalRayParams)
+                        if vis then currentTargetPart, currentLockedPos = part, pos; break end
+                    end
+                end
+                
+                -- Valid Target Found? Return immediately (Snap to it!)
+                if currentTargetPart then
+                    local isFacingAway = (cand.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.3)
+                    
+                    -- Debug Update
+                    if aimBotDebug and lastLoggedTarget ~= character then
+                        lastLoggedTarget = character
+                        warn("[AimBot] LOCKED: " .. tostring(character.Name) .. " | Dist: " .. math.floor(cand.dist))
+                    end
+                    
+                    return currentTargetPart, currentLockedPos, meta.isShield, cand.root.Velocity, currentTargetPart.Name, meta.isHighMob, isFacingAway, character
+                end
+            end
+            
+            return nil
+        end
+
+            -- 3. Aim Loop
+            local isAiming = false
+            UserInputService.InputBegan:Connect(function(input, gpe)
+                if input.UserInputType == aimKey then isAiming = true end
+            end)
+            UserInputService.InputEnded:Connect(function(input, gpe)
+                if input.UserInputType == aimKey then 
+                    isAiming = false 
+                    lastTarget = nil -- Reset target when releasing mouse
+                    lastLoggedTarget = nil -- Reset debug log state to allow re-logging same NPC
+                end
+            end)
+
+            local debugLabel = nil
+            RunService.RenderStepped:Connect(function()
+                if not ScreenGui.Parent then return end
+                
+                -- Debug Label Management
+                if aimBotDebug then
+                    if not debugLabel then
+                        debugLabel = Instance.new("TextLabel")
+                        debugLabel.Name = "AimDebugLabel"
+                        debugLabel.Size = UDim2.new(0, 200, 0, 50)
+                        debugLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+                        debugLabel.BackgroundTransparency = 0.5
+                        debugLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+                        debugLabel.Font = Enum.Font.Code
+                        debugLabel.TextSize = 14
+                        debugLabel.Visible = false
+                        debugLabel.Parent = ScreenGui
+                        
+                        local uiCorner = Instance.new("UICorner")
+                        uiCorner.Parent = debugLabel
                     end
                 else
-                    -- Too far, remove highlight to save rendering slots
-                    if highlight then highlight:Destroy() end
+                    if debugLabel then debugLabel:Destroy() debugLabel = nil end
+                end
+
+                if aimEnabled then
+                    if isAiming then
+                        local targetPart, targetPos, isShield, velocity, partName, isHighMob, isFacingAway, targetChar = getClosestTarget()
+                        if targetPart and targetPos then
+                            -- Update Debug Label
+                            if debugLabel and targetChar then
+                                local mouseParams = UserInputService:GetMouseLocation()
+                                debugLabel.Position = UDim2.new(0, mouseParams.X + 20, 0, mouseParams.Y + 20)
+                                debugLabel.Text = string.format("TARGET: %s\nPART: %s\nDIST: %d", targetChar.Name, partName, (LocalPlayer.Character.HumanoidRootPart.Position - targetPos).Magnitude)
+                                debugLabel.Visible = true
+                            end
+
+                            local currentCF = Camera.CFrame
+                            local finalTargetPos = targetPos
+                            
+                            -- 1. VELOCITY PREDICTION (Fixes tracking during dodge rolls)
+                            -- Factor is based on aim smoothness and distance to simulate shell travel/tracking lag
+                            local predictionFactor = isHighMob and 0.15 or 0.08
+                            if velocity.Magnitude > 2 then
+                                finalTargetPos = finalTargetPos + (velocity * predictionFactor)
+                            end
+                            
+                            -- 2. SHIELD OFFSET (Right + Up)
+                            -- Bypass if the enemy is facing away (back is turned)
+                            if isShield and not isFacingAway then
+                                finalTargetPos = finalTargetPos + (currentCF.RightVector * aimRightOffset) + (currentCF.UpVector * aimUpOffset)
+                            end
+                            
+                            -- 3. ADAPTIVE SMOOTHING (Faster snapping for fast targets)
+                            local adaptiveSmooth = aimSmoothness
+                            local velocityMag = velocity.Magnitude
+                            if velocityMag > 3 then
+                                -- Scaled multiplier based on velocity to catch even non-RSU fast rollers
+                                local speedMult = math.clamp(velocityMag / 8, 1.5, 3.5)
+                                adaptiveSmooth = math.clamp(aimSmoothness * speedMult, 0.05, 0.98)
+                            end
+                            
+                            local targetCF = CFrame.new(currentCF.Position, finalTargetPos)
+                            Camera.CFrame = currentCF:Lerp(targetCF, adaptiveSmooth)
+                        else
+                            if debugLabel then debugLabel.Visible = false end
+                        end
+                    else
+                        if debugLabel then debugLabel.Visible = false end
+                    end
+                else
+                    if debugLabel then debugLabel.Visible = false end
+                end
+            end)
+
+            createToggle(CombatTab, "Aim Bot", false, function(state)
+                aimEnabled = state
+            end)
+
+            createToggle(CombatTab, "Aim Debug (F9)", false, function(state)
+                aimBotDebug = state
+            end)
+
+            -- ====================
+            -- CATEGORY: VISUALS
+            -- ====================
+
+            -- 1. Player ESP
+            -- 1. Player ESP (Optimized Highlight Manager)
+            local espEnabled = false
+            local espContainer = Instance.new("Folder")
+            espContainer.Name = "ExaminationESP"
+            espContainer.Parent = CoreGui
+
+            local potentialPlayerTargets = {}
+
+            local function clearESP() 
+                espContainer:ClearAllChildren() 
+                potentialPlayerTargets = {}
+            end
+
+            local staffCache = {}
+            local staffCheckDebounce = {}
+            
+            local function managePlayerHighlights()
+                while espEnabled do
+                    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        task.wait(1)
+                        continue
+                    end
+                    
+                    local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+                    
+                    for player, _ in pairs(potentialPlayerTargets) do
+                        if not player or not player.Parent then 
+                            potentialPlayerTargets[player] = nil
+                            staffCache[player] = nil
+                            continue 
+                        end
+                        
+                        local char = player.Character
+                        if not char or not char:IsDescendantOf(game) then 
+                            continue 
+                        end
+                        
+                        local root = char:FindFirstChild("HumanoidRootPart")
+                        if not root then continue end
+
+                        -- STAFF CHECK
+                        local isStaff = staffCache[player]
+                        if isStaff == nil and not staffCheckDebounce[player] then
+                            staffCheckDebounce[player] = true
+                            task.spawn(function()
+                                local s, _ = detectStaff(player)
+                                staffCache[player] = s or false
+                                staffCheckDebounce[player] = nil
+                            end)
+                        end
+                        
+                        local dist = (root.Position - myPos).Magnitude
+                        local hl = char:FindFirstChild("ESPHighlight")
+                        
+                        -- SLOT MANAGEMENT: Only highlight if < 150 studs
+                        if dist < 150 then
+                            if not hl then
+                                hl = Instance.new("Highlight")
+                                hl.Name = "ESPHighlight"
+                                hl.Adornee = char
+                                hl.FillTransparency = 1 -- Outline only
+                                hl.OutlineTransparency = 0
+                                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                hl.Parent = char 
+                                
+                                -- Failsafe Cleanup
+                                char.AncestryChanged:Connect(function()
+                                    if not char:IsDescendantOf(game) and hl then hl:Destroy() end
+                                end)
+                            end
+
+                            -- UPDATE COLOR
+                            if isStaff then
+                                hl.FillColor = Color3.fromRGB(255, 0, 255)
+                                hl.OutlineColor = Color3.fromRGB(255, 0, 255)
+                            else
+                                hl.FillColor = Color3.fromRGB(0, 150, 255)
+                                hl.OutlineColor = Color3.fromRGB(0, 150, 255)
+                            end
+                        else
+                            -- Too far, free up the slot for Bosses/Nearby Enemies
+                            if hl then hl:Destroy() end
+                        end
+                    end
+                    task.wait(0.2)
                 end
             end
-        end
-        task.wait(0.2) -- Check 5 times a second
-    end
-end
 
-local function addInfectESP(model)
-    if not infectEspEnabled then return end
-    if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return end
-    if Players:GetPlayerFromCharacter(model) then return end
-    
-    local humanoid = model:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    
-    if Camera.CameraSubject == humanoid then return end
-
-    -- SMART FILTER (Event-Driven)
-    local root = model:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-
-    local function isValidEnemy()
-        -- 0. Strict Self Check
-        if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
-
-        -- 0. Strict Self Check
-        if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
-        
-        -- 0.1 Friendly Name Blacklist 
-        local n = string.lower(model.Name)
-        if n == "npc" or string.find(n, "hizoimviewmodel") or string.find(n, "viewmodel") then return false end
-        
-        -- 0.2 ForceField Check
-        -- BYPASS if Armed/Boss (Fixes ESP drop during skills)
-        local isBoss = isBossEntity(model)
-        if model:FindFirstChildOfClass("ForceField") and not hasWeapon(model) and not isBoss then return false end
-
-        -- 1. Has weapon or is Boss? ALWAYS Valid.
-        if hasWeapon(model) or isBoss then return true end
-        
-        -- 2. Anchored? INVALID (Statue) until unanchored.
-        -- If armed/boss, we already returned true above, so this checks only unarmed statues
-        if root.Anchored then return false end
-        return true
-    end
-
-    local function tryAdd()
-        if isValidEnemy() then
-            -- Check duplicates
-            if not potentialEspTargets[model] then
-                potentialEspTargets[model] = true
-                -- Cleanup listener if it became valid
-                -- (Note: In a full event system we'd disconnect specific listeners, but this is simple enough)
+            local function addESP(player)
+                if player == LocalPlayer then return end
+                potentialPlayerTargets[player] = true
             end
-        end
-    end
 
-    if isValidEnemy() then
-        tryAdd()
-    else
-        -- It's currently a "Statue" or "Spawning". Listen for state changes.
-        -- 1. Watch for Unanchoring (Movement allowed)
-        local anchorConn
-        anchorConn = root:GetPropertyChangedSignal("Anchored"):Connect(function()
-            if not root.Anchored then
-                tryAdd()
-                if anchorConn then anchorConn:Disconnect() anchorConn = nil end
+            createToggle(VisualsTab, "Player ESP", false, function(state)
+                espEnabled = state
+                if state then
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        if plr ~= LocalPlayer then addESP(plr) end
+                    end
+                    Players.PlayerAdded:Connect(function(plr)
+                        if espEnabled and plr ~= LocalPlayer then addESP(plr) end
+                    end)
+                    task.spawn(managePlayerHighlights)
+                else
+                    clearESP()
+                    -- Loop handles cleanup of individual highlights next cycle or manually here if needed
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
+                            plr.Character.ESPHighlight:Destroy()
+                        end
+                    end
+                end
+            end)
+
+
+
+            -- 2. Infect ESP (Enemies) - Optimized Distance Limit
+            local infectEspEnabled = false
+            local infectEspContainer = Instance.new("Folder")
+            infectEspContainer.Name = "InfectESP"
+            infectEspContainer.Parent = CoreGui
+
+            -- Track Potential Enemies for ESP
+            local potentialEspTargets = {} 
+
+            local function clearInfectESP() 
+                infectEspContainer:ClearAllChildren() 
+                -- Manual Cleanup because Highlights are now parented to Models
+                for model, _ in pairs(potentialEspTargets) do
+                    if model and model:FindFirstChild("InfectHighlight") then
+                        model.InfectHighlight:Destroy()
+                    end
+                end
+                potentialEspTargets = {}
             end
-        end)
-        
-        -- 2. Watch for Weapon Equip
-        local toolConn
-        toolConn = model.ChildAdded:Connect(function(child)
-            task.wait() -- Wait for props
-            if hasWeapon(model) then
-                tryAdd()
-                if toolConn then toolConn:Disconnect() toolConn = nil end
-            end
-        end)
-        
-        -- Cleanup connections if model dies/removed before becoming valid
-        model.AncestryChanged:Connect(function()
-            if not model:IsDescendantOf(game) then
-                if anchorConn then anchorConn:Disconnect() end
-                if toolConn then toolConn:Disconnect() end
-            end
-        end)
-    end
-    
-    -- Standard Cleanup for valid targets is handled in the main loop or AncestryChanged above
-    model.AncestryChanged:Connect(function()
-        if not model:IsDescendantOf(game) then 
-            potentialEspTargets[model] = nil
-        end
-    end)
-end
 
--- 3. Ammo ESP
-local ammoEspEnabled = false
-local ammoName = "Ammo"
-local ammoEspContainer = Instance.new("Folder")
-ammoEspContainer.Name = "AmmoESP"
-ammoEspContainer.Parent = CoreGui
+            local function manageInfectHighlights()
+                local printedBossDebug = {} -- Debounce for debug prints
+                
+                while infectEspEnabled do
+                    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        task.wait(1)
+                        continue
+                    end
+                    
+                    local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+                    
+                    for model, _ in pairs(potentialEspTargets) do
+                        if not model.Parent then 
+                            potentialEspTargets[model] = nil 
+                            continue 
+                        end
 
-local function clearAmmoESP() ammoEspContainer:ClearAllChildren() end
+                        -- STRICT FAILSAFE: Remove Self
+                        if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then
+                            potentialEspTargets[model] = nil
+                            local highlight = model:FindFirstChild("InfectHighlight")
+                            if highlight then highlight:Destroy() end
+                            continue
+                        end
+                        
+                        local root = model:FindFirstChild("HumanoidRootPart")
+                        -- Prioritize Living Humanoid (Fix for Resurrection/Duplicate Humanoids)
+                        local humanoid = nil
+                        local firstHum = nil
+                        for _, child in ipairs(model:GetChildren()) do
+                            if child:IsA("Humanoid") then
+                                if not firstHum then firstHum = child end
+                                if child.Health > 0 then
+                                    humanoid = child
+                                    break
+                                end
+                            end
+                        end
+                        humanoid = humanoid or firstHum
+                        
+                        -- SKIP DEAD/INVALID (ESP Specific: More aggressive cleanup than Aim Bot)
+                        local velocityMag = root and root.Velocity.Magnitude or 0
+                        local moveDirMag = humanoid and humanoid.MoveDirection.Magnitude or 0
+                        -- Require active intentional movement OR extreme velocity to stay highlighted while dead.
+                        local isRolling = (moveDirMag > 0.15) or (velocityMag > 25.0)
+                        local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
+                        
+                        if not root or not humanoid or (isDead and not isRolling) then
+                            local highlight = model:FindFirstChild("InfectHighlight")
+                            if highlight then highlight:Destroy() end
+                            continue
+                        end
 
-local function addAmmoESP(obj)
-    if not ammoEspEnabled then return end
-    if not obj:IsA("BasePart") and not obj:IsA("Model") then return end
-    
-    -- Check Name Match (Case Insensitive)
-    if not string.find(string.lower(obj.Name), string.lower(ammoName)) then return end
-    
-    -- Check Interactivity (Filter out props)
-    local isInteractive = false
-    if obj:FindFirstChildWhichIsA("ClickDetector", true) or 
-    obj:FindFirstChildWhichIsA("ProximityPrompt", true) or
-    obj:FindFirstChildWhichIsA("TouchTransmitter", true) then
-        isInteractive = true
-    end
-    
-    if not isInteractive then return end
-    
-    -- Distance check (Consistency with other ESPs)
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local pos = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetPivot().Position) or obj.Position
-        local dist = (pos - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-        if dist > 150 then return end
-    end
-    
-    -- Check if already highlighted
-    if obj:FindFirstChild("AmmoHighlight") then return end
-    
-    local hl = Instance.new("Highlight")
-    hl.Name = "AmmoHighlight"
-    hl.Adornee = obj
-    hl.FillColor = Color3.fromRGB(50, 255, 50) -- Lime Green
-    hl.OutlineColor = Color3.fromRGB(0, 255, 0) -- Brighter Lime Outline
-    hl.FillTransparency = 1 -- Outline only for consistency
-    hl.OutlineTransparency = 0
-    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.Parent = ammoEspContainer
-    
-    -- Link destruction
-    obj.AncestryChanged:Connect(function()
-        if not obj:IsDescendantOf(game) then hl:Destroy() end
-    end)
-end
+                        if root then
+                            local dist = (root.Position - myPos).Magnitude
+                            
+                            -- Distance Sanity Check (Don't remove Boss ESP even if close)
+                            if not isBossEntity(model) and dist < 2 then 
+                                potentialEspTargets[model] = nil 
+                                local highlight = model:FindFirstChild("InfectHighlight")
+                                if highlight then highlight:Destroy() end
+                                continue
+                            end
 
-local function updateAmmoESP()
-    clearAmmoESP()
-    if not ammoEspEnabled then return end
-    
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        addAmmoESP(obj)
-    end
-end
+                            -- BOSS CHECK (Priority)
+                            local isBoss = isBossEntity(model)
 
-createToggle(VisualsTab, "Infected & Ammo ESP", false, function(state)
-    infectEspEnabled = state
-    ammoEspEnabled = state -- Sync ammo with infected
-    
-    if state then
-        -- Refresh existing
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
-                addInfectESP(obj)
-            elseif obj:IsA("BasePart") or obj:IsA("Model") then
-                addAmmoESP(obj)
-            end
-        end
-        -- Start Management Loop (Infect ESP uses this for rendering highlights)
-        task.spawn(manageInfectHighlights)
-    else
-        clearInfectESP()
-        clearAmmoESP()
-    end
-end)
+                            local maxDist = isBoss and 2000 or 150 -- Bosses have near infinite range
 
--- Unified Listener (Outside toggle to prevent connection leaks)
-workspace.DescendantAdded:Connect(function(obj)
-    if not (infectEspEnabled or ammoEspEnabled) then return end
-    task.wait(0.1)
-    if not obj.Parent then return end
-    
-    if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
-        addInfectESP(obj)
-    else
-        addAmmoESP(obj)
-    end
-end)
+                            local highlight = model:FindFirstChild("InfectHighlight")
+                            
+                            if dist < maxDist then
+                                local hl = highlight
+                                if not hl then
+                                    -- Create Highlight
+                                    hl = Instance.new("Highlight")
+                                    hl.Name = "InfectHighlight"
+                                    hl.Adornee = model
+                                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                                    hl.FillTransparency = 0.85
+                                    hl.OutlineTransparency = 0
+                                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                    hl.Parent = model
+                                end
 
--- Ammo Event Listeners are now integrated into the Infected & Ammo ESP toggle
-
--- 4. Aggressive Mouse Unlock (Shift Lock Fix)
-local mouseOverrideConnection = RunService.RenderStepped:Connect(function()
-    if not ScreenGui.Parent then 
-        if mouseOverrideConnection then mouseOverrideConnection:Disconnect() end
-        return 
-    end
-    
-    if MainFrame.Visible then
-        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-        UserInputService.MouseIconEnabled = true
-        
-        -- Also ensure the modal fix is sized correctly just in case
-        local modal = MainFrame:FindFirstChild("ModalFix")
-        if modal then modal.Size = UDim2.new(1, 0, 1, 0) end
-    end
-end)
-
--- [ CLEANUP LOGIC ]
-local function cleanupGUI()
-    if mouseOverrideConnection then
-        mouseOverrideConnection:Disconnect()
-        mouseOverrideConnection = nil
-    end
-    
-    if fullBrightConnection then 
-        fullBrightConnection:Disconnect() 
-        fullBrightConnection = nil
-        Lighting.Brightness = 1
-        Lighting.GlobalShadows = true
-        Lighting.OutdoorAmbient = Color3.fromRGB(127, 127, 127)
-    end
-    
-    espEnabled = false
-    infectEspEnabled = false
-    aimEnabled = false
-    flyEnabled = false
-    
-    
-    if espContainer then espContainer:Destroy() end
-    if infectEspContainer then infectEspContainer:Destroy() end
-    if ammoEspContainer then ammoEspContainer:Destroy() end
-    
-    -- MANUAL ESP CLEANUP (Since we parent highlights to characters now)
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
-            plr.Character.ESPHighlight:Destroy()
-        end
-    end
-    
-    clearInfectESP()
-    clearAmmoESP()
-    stopFly()
-    
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.WalkSpeed = 16
-        -- Reset collisions on GUI close
-        for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                -- WHITELIST: Only restore collision for CORE parts
-                local restoreList = {
-                    ["Head"] = true,
-                    ["HumanoidRootPart"] = true,
-                    ["Torso"] = true,
-                    ["UpperTorso"] = true,
-                    ["LowerTorso"] = true
-                }
-                if restoreList[part.Name] then
-                    part.CanCollide = true 
+                                -- DYNAMIC STYLE UPDATE (Boss = Purple, Elite = Orange, Default = Red Outline)
+                                local isElite = isEliteEntity(model)
+                                
+                                if isBoss then
+                                    hl.FillColor = Color3.fromRGB(130, 0, 255)
+                                    hl.OutlineColor = Color3.fromRGB(200, 100, 255)
+                                    hl.FillTransparency = 1 -- Outline only
+                                elseif isElite then
+                                    hl.FillColor = Color3.fromRGB(255, 140, 0) -- Orange
+                                    hl.OutlineColor = Color3.fromRGB(255, 200, 0) -- Brighter Orange Outline
+                                    hl.FillTransparency = 1 -- Outline only
+                                else
+                                    hl.FillColor = Color3.fromRGB(255, 0, 0)
+                                    hl.OutlineColor = Color3.fromRGB(255, 0, 0)
+                                    hl.FillTransparency = 1 -- Outline only
+                                end
+                            else
+                                -- Too far, remove highlight to save rendering slots
+                                if highlight then highlight:Destroy() end
+                            end
+                        end
+                    end
+                    task.wait(0.1) -- Fast Update (10 times a second for instant kill feedback)
                 end
             end
-        end
-    end
-    
-    if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
-end
 
-CloseButton.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
-    cleanupGUI()
-end)
+            local function addInfectESP(model)
+                if not infectEspEnabled then return end
+                if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return end
+                if Players:GetPlayerFromCharacter(model) then return end
+                
+                local humanoid = model:FindFirstChildOfClass("Humanoid")
+                if not humanoid then return end
+                
+                if Camera.CameraSubject == humanoid then return end
 
-ScreenGui.AncestryChanged:Connect(function()
-    if not ScreenGui:IsDescendantOf(game) then
-        cleanupGUI()
-    end
-end)
+                -- SMART FILTER (Event-Driven)
+                local root = model:FindFirstChild("HumanoidRootPart")
+                if not root then return end
+
+                local function isValidEnemy()
+                    -- 0. Strict Self Check
+                    if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
+                    
+                    -- 0.1 Name Blacklist 
+                    if isNPCBlacklisted(model.Name) then return false end
+                    
+                    -- 0.2 ForceField Check
+                    -- BYPASS if Armed/Boss (Fixes ESP drop during skills)
+                    local isBoss = isBossEntity(model)
+                    if model:FindFirstChildOfClass("ForceField") and not hasWeapon(model) and not isBoss then return false end
+
+                    -- 1. Has weapon or is Boss? ALWAYS Valid.
+                    if hasWeapon(model) or isBoss then return true end
+                    
+                    -- 2. Anchored? INVALID (Statue) until unanchored.
+                    -- If armed/boss, we already returned true above, so this checks only unarmed statues
+                    if root.Anchored then return false end
+                    return true
+                end
+
+                local function tryAdd()
+                    if isValidEnemy() then
+                        -- Check duplicates
+                        if not potentialEspTargets[model] then
+                            potentialEspTargets[model] = true
+                            -- Cleanup listener if it became valid
+                            -- (Note: In a full event system we'd disconnect specific listeners, but this is simple enough)
+                        end
+                    end
+                end
+
+                if isValidEnemy() then
+                    tryAdd()
+                else
+                    -- It's currently a "Statue" or "Spawning". Listen for state changes.
+                    -- 1. Watch for Unanchoring (Movement allowed)
+                    local anchorConn
+                    anchorConn = root:GetPropertyChangedSignal("Anchored"):Connect(function()
+                        if not root.Anchored then
+                            tryAdd()
+                            if anchorConn then anchorConn:Disconnect() anchorConn = nil end
+                        end
+                    end)
+                    
+                    -- 2. Watch for Weapon Equip
+                    local toolConn
+                    toolConn = model.ChildAdded:Connect(function(child)
+                        task.wait() -- Wait for props
+                        if hasWeapon(model) then
+                            tryAdd()
+                            if toolConn then toolConn:Disconnect() toolConn = nil end
+                        end
+                    end)
+                    
+                    -- Cleanup connections if model dies/removed before becoming valid
+                    model.AncestryChanged:Connect(function()
+                        if not model:IsDescendantOf(game) then
+                            if anchorConn then anchorConn:Disconnect() end
+                            if toolConn then toolConn:Disconnect() end
+                        end
+                    end)
+                end
+                
+                -- Standard Cleanup for valid targets is handled in the main loop or AncestryChanged above
+                model.AncestryChanged:Connect(function()
+                    if not model:IsDescendantOf(game) then 
+                        potentialEspTargets[model] = nil
+                    end
+                end)
+            end
+
+            -- 3. Ammo ESP
+            local ammoEspEnabled = false
+            local ammoName = "Ammo"
+            local potentialAmmoTargets = {}
+
+            local function clearAmmoESP() 
+                for obj, _ in pairs(potentialAmmoTargets) do
+                    if obj and obj:FindFirstChild("AmmoHighlight") then
+                        obj.AmmoHighlight:Destroy()
+                    end
+                end
+                potentialAmmoTargets = {}
+            end
+
+            local function addAmmoESP(obj)
+                if not ammoEspEnabled then return end
+                if not obj:IsA("BasePart") and not obj:IsA("Model") then return end
+                
+                -- Check Name Match (Case Insensitive)
+                if not string.find(string.lower(obj.Name), string.lower(ammoName)) then return end
+                
+                -- Check Interactivity (Filter out props)
+                local isInteractive = false
+                if obj:FindFirstChildWhichIsA("ClickDetector", true) or 
+                obj:FindFirstChildWhichIsA("ProximityPrompt", true) or
+                obj:FindFirstChildWhichIsA("TouchTransmitter", true) then
+                    isInteractive = true
+                end
+                
+                if not isInteractive then return end
+                
+                -- Register as potential target
+                potentialAmmoTargets[obj] = true
+                
+                -- Cleanup on remove
+                obj.AncestryChanged:Connect(function()
+                    if not obj:IsDescendantOf(game) then potentialAmmoTargets[obj] = nil end
+                end)
+            end
+
+            local function manageAmmoHighlights()
+                while ammoEspEnabled do
+                    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        task.wait(1)
+                        continue
+                    end
+                    
+                    local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+                    
+                    for obj, _ in pairs(potentialAmmoTargets) do
+                        if not obj or not obj.Parent then 
+                            potentialAmmoTargets[obj] = nil
+                            continue 
+                        end
+                        
+                        local pos = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetPivot().Position) or obj.Position
+                        local dist = (pos - myPos).Magnitude
+                        local hl = obj:FindFirstChild("AmmoHighlight")
+                        
+                        -- SLOT MANAGEMENT: Only highlight if < 150 studs
+                        if dist < 150 then
+                            if not hl then
+                                hl = Instance.new("Highlight")
+                                hl.Name = "AmmoHighlight"
+                                hl.Adornee = obj
+                                hl.FillColor = Color3.fromRGB(50, 255, 50) -- Lime Green
+                                hl.OutlineColor = Color3.fromRGB(0, 255, 0) -- Brighter Lime Outline
+                                hl.FillTransparency = 1 -- Outline only
+                                hl.OutlineTransparency = 0
+                                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                hl.Parent = obj
+                            end
+                        else
+                            -- Too far/Already has highlight, remove it
+                            if hl then hl:Destroy() end
+                        end
+                    end
+                    task.wait(0.5) -- Check twice a second
+                end
+            end
+
+            createToggle(VisualsTab, "Infected & Ammo ESP", false, function(state)
+                infectEspEnabled = state
+                ammoEspEnabled = state -- Sync ammo with infected
+                
+                if state then
+                    -- Refresh existing
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+                            addInfectESP(obj)
+                        elseif obj:IsA("BasePart") or obj:IsA("Model") then
+                            addAmmoESP(obj)
+                        end
+                    end
+                    -- Start Management Loops
+                    task.spawn(manageInfectHighlights)
+                    task.spawn(manageAmmoHighlights)
+                else
+                    clearInfectESP()
+                    clearAmmoESP()
+                end
+            end)
+
+            -- Unified Listener (Outside toggle to prevent connection leaks)
+            workspace.DescendantAdded:Connect(function(obj)
+                if not (infectEspEnabled or ammoEspEnabled) then return end
+                -- Remove fixed wait, handling individual component additions is better
+                if not obj.Parent then return end
+                
+                -- 1. Catch MODEL Added (If complete)
+                if obj:IsA("Model") then
+                    task.wait(0.1) -- Give it a moment for children
+                    addInfectESP(obj)
+                    if obj:IsA("BasePart") or obj:IsA("Model") then addAmmoESP(obj) end -- Fallback for Ammo Model
+                
+                -- 2. Catch HUMANOID Added (The reliable trigger)
+                elseif obj:IsA("Humanoid") then
+                    addInfectESP(obj.Parent)
+                
+                -- 3. Catch ROOT PART Added (Another reliable trigger)
+                elseif obj.Name == "HumanoidRootPart" then
+                    addInfectESP(obj.Parent)
+
+                -- 4. Ammo Check (Parts)
+                elseif obj:IsA("BasePart") then
+                    addAmmoESP(obj)
+                end
+            end)
+
+            -- Ammo Event Listeners are now integrated into the Infected & Ammo ESP toggle
+
+            -- 4. Aggressive Mouse Unlock (Shift Lock Fix)
+            local mouseOverrideConnection = RunService.RenderStepped:Connect(function()
+                if not ScreenGui.Parent then 
+                    if mouseOverrideConnection then mouseOverrideConnection:Disconnect() end
+                    return 
+                end
+                
+                if MainFrame.Visible then
+                    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+                    UserInputService.MouseIconEnabled = true
+                    
+                    -- Also ensure the modal fix is sized correctly just in case
+                    local modal = MainFrame:FindFirstChild("ModalFix")
+                    if modal then modal.Size = UDim2.new(1, 0, 1, 0) end
+                end
+            end)
+
+            -- Connections are managed at the top of the script now
+
+            -- [ CLEANUP LOGIC ]
+            local function cleanupGUI()
+                if mouseOverrideConnection then
+                    mouseOverrideConnection:Disconnect()
+                    mouseOverrideConnection = nil
+                end
+                
+                if fullBrightConnection then 
+                    fullBrightConnection:Disconnect() 
+                    fullBrightConnection = nil
+                    Lighting.Brightness = 1
+                    Lighting.GlobalShadows = true
+                    Lighting.OutdoorAmbient = Color3.fromRGB(127, 127, 127)
+                end
+                
+                espEnabled = false
+                infectEspEnabled = false
+                aimEnabled = false
+                flyEnabled = false
+                
+                
+                if espContainer then espContainer:Destroy() end
+                if infectEspContainer then infectEspContainer:Destroy() end
+                
+                -- MANUAL ESP CLEANUP (Since we parent highlights to characters now)
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
+                        plr.Character.ESPHighlight:Destroy()
+                    end
+                end
+                
+                clearInfectESP()
+                clearAmmoESP()
+                
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr.Character then
+                        if plr.Character:FindFirstChild("Head") and plr.Character.Head:FindFirstChild("ESPTest") then
+                            plr.Character.Head.ESPTest:Destroy()
+                        end
+                        if plr.Character:FindFirstChild("ESPTestHighlight") then
+                            plr.Character.ESPTestHighlight:Destroy()
+                        end
+                    end
+                end
+                
+                stopFly()
+                
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                    LocalPlayer.Character.Humanoid.WalkSpeed = 16
+                    -- Reset collisions on GUI close
+                    for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            -- WHITELIST: Only restore collision for CORE parts
+                            local restoreList = {
+                                ["Head"] = true,
+                                ["HumanoidRootPart"] = true,
+                                ["Torso"] = true,
+                                ["UpperTorso"] = true,
+                                ["LowerTorso"] = true
+                            }
+                            if restoreList[part.Name] then
+                                part.CanCollide = true 
+                            end
+                        end
+                    end
+                end
+                
+                if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
+            end
+
+            CloseButton.MouseButton1Click:Connect(function()
+                ScreenGui:Destroy()
+                cleanupGUI()
+            end)
+
+            ScreenGui.AncestryChanged:Connect(function()
+                if not ScreenGui:IsDescendantOf(game) then
+                    cleanupGUI()
+                end
+            end)
 
 
--- [ TOGGLE ALL KEYBIND ]
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if input.KeyCode == Enum.KeyCode.RightControl and not gpe then
-        if MainFrame.Visible then
-            -- Minimize
-            MainFrame.Visible = false
-            OpenButton.Visible = true
-        else
-            -- Restore
-            MainFrame.Visible = true
-            OpenButton.Visible = false
-        end
-    end
-end)
+            -- [ TOGGLE ALL KEYBIND ]
+            UserInputService.InputBegan:Connect(function(input, gpe)
+                if input.KeyCode == Enum.KeyCode.RightControl and not gpe then
+                    if MainFrame.Visible then
+                        -- Minimize
+                        MainFrame.Visible = false
+                        OpenButton.Visible = true
+                    else
+                        -- Restore
+                        MainFrame.Visible = true
+                        OpenButton.Visible = false
+                    end
+                end
+            end)

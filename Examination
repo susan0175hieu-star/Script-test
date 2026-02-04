@@ -128,7 +128,11 @@
                     "lurkerrsu4",
                     "lurkerrsu5",
                     "lurkerlab",
-                    "mikhail"
+                    "mikhail",
+                    "lurkerrsu2",
+                    "riserhazmat2",
+                    "riserhazmat",
+                    "fireriser"
                 }
 
                 local function isNPCBlacklisted(name)
@@ -867,7 +871,7 @@
                 local function isHighMobilityEntity(model)
                     if not model then return false end
                     local n = string.lower(model.Name)
-                    local mobileKeywords = {"rsu", "gunner", "lurker", "lab", "scientist", "hazmat", "stalker", "ninja", "agile", "mutant", "subject", "specimen", "research", "hazard", "white", "heavy", "gas", "mask", "tactical", "soldier", "commando", "elite", "guard", "security", "unit", "yellow"}
+                    local mobileKeywords = {"chimera", "boss", "rsu", "gunner", "lurker", "lab", "scientist", "hazmat", "stalker", "ninja", "agile", "mutant", "subject", "specimen", "research", "hazard", "white", "heavy", "gas", "mask", "tactical", "soldier", "commando", "elite", "guard", "security", "unit", "yellow"}
                     for _, kw in ipairs(mobileKeywords) do
                         if string.find(n, kw) then return true end
                     end
@@ -1135,23 +1139,39 @@
                     local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
                     
                     -- NEW: Downed/Ragdoll Check (Fixes Aiming at Ground)
-                    local isDowned = humanoid.PlatformStand or 
-                                     (humanoid:GetState() == Enum.HumanoidStateType.FallingDown) or 
-                                     (humanoid:GetState() == Enum.HumanoidStateType.Ragdoll)
+                    local head = enemy:FindFirstChild("Head")
+                    local headY = head and head.Position.Y or 0
+                    local rootY = root.Position.Y
+                    local heightDiff = math.abs(headY - rootY)
+                    
+                    -- PRONE MEMORY: Keep them marked as prone for 2.5s if they hit any threshold
+                    local isCurrentlyProne = humanoid.PlatformStand or 
+                                             (humanoid:GetState() == Enum.HumanoidStateType.FallingDown) or 
+                                             (humanoid:GetState() == Enum.HumanoidStateType.Ragdoll) or
+                                             (humanoid:GetState() == Enum.HumanoidStateType.Physics) or
+                                             (humanoid.Sit) or (root.CFrame.UpVector.Y < 0.4) or
+                                             (heightDiff < 0.8) or (enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned"))
+                    
+                    if isCurrentlyProne then meta.lastProneTime = tick() end
+                    local isDowned = (tick() - (meta.lastProneTime or 0) < 0.5)
                     
                     if isDead or isDowned then
-                        local velocityMag = root.Velocity.Magnitude
-                        -- Strict Bypass for High-Speed Rolls (only if not completely ragdolled)
-                        if not isDowned and velocityMag <= 25.0 then continue end
-                        -- If they are downed/ragdolled and not moving extremely fast, skip
-                        if isDowned and velocityMag <= 15.0 then continue end
+                        -- BOSS/SHIELD EXEMPTION: Always track bosses and shield-enemies even if downed
+                        if not (meta.isBoss or meta.isShield) then
+                            local velocityMag = root.Velocity.Magnitude
+                            -- Strict Bypass for High-Speed Rolls (only if not completely ragdolled)
+                            if not isDowned and velocityMag <= 25.0 then continue end
+                            -- If they are downed/ragdolled and not moving extremely fast, skip
+                            if isDowned and velocityMag <= 15.0 then continue end
+                        end
                     end
 
-                    if root.Anchored and not hasWeapon(enemy) then continue end
+                    if root.Anchored and not hasWeapon(enemy) and not meta.isBoss then continue end
                     
                     table.insert(candidates, {
                         model = enemy,
                         dist = mouseDist,
+                        dist3D = dist3D,
                         root = root,
                         humanoid = humanoid,
                         meta = meta,
@@ -1159,8 +1179,13 @@
                     })
                 end
 
-                -- Sort by Mouse Distance (Closest to crosshair first)
-                table.sort(candidates, function(a, b) return a.dist < b.dist end)
+                -- Sort by Hybrid Score (Mouse Distance + 3D Distance Weights)
+                -- PRIORITY: Bosses get a significant bonus. Closer 3D threats are weighted at 1/5 pixels.
+                table.sort(candidates, function(a, b) 
+                    local scoreA = a.dist + (a.dist3D / 5) - (a.meta.isBoss and 300 or 0)
+                    local scoreB = b.dist + (b.dist3D / 5) - (b.meta.isBoss and 300 or 0)
+                    return scoreA < scoreB
+                end)
 
                 -- PASS 2: Heavy Physics (Visibility) on Top Candidates
                 globalRayParams.FilterDescendantsInstances = {char, Camera}
@@ -1191,15 +1216,60 @@
                     
                     -- Valid Target Found? Return immediately (Snap to it!)
                     if currentTargetPart then
-                        local isFacingAway = (cand.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.3)
+                        local isFacingAway = (cand.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.6)
                         
-                        -- Debug Update
-                        if aimBotDebug and lastLoggedTarget ~= character then
-                            lastLoggedTarget = character
-                            warn("[AimBot] LOCKED: " .. tostring(character.Name) .. " | Dist: " .. math.floor(cand.dist))
+                        -- DYNAMIC SHIELD BYPASS: Disable offset if downed OR facing away
+                        local hum = cand.humanoid
+                        local root = cand.root
+                        local head = character:FindFirstChild("Head")
+                        local hDiff = head and math.abs(head.Position.Y - root.Position.Y) or 5
+                        
+                        local isCurrentlyProne = hum.PlatformStand or (hum:GetState() == Enum.HumanoidStateType.FallingDown) or (hum:GetState() == Enum.HumanoidStateType.Ragdoll) or (hum:GetState() == Enum.HumanoidStateType.Physics) or (hum.Sit) or (root.CFrame.UpVector.Y < 0.4) or (hDiff < 0.8) or (character:FindFirstChild("Stun") or character:FindFirstChild("Stunned"))
+                        if isCurrentlyProne then meta.lastProneTime = tick() end
+                        
+                        local isProne = (tick() - (meta.lastProneTime or 0) < 0.5)
+                        local shouldApplyOffset = meta.isShield and not (isProne or isFacingAway)
+
+                        -- Persistence Update
+                        lastTarget = character
+                        lastTargetTime = tick()
+
+                        -- Debug Update removed for production
+
+                        return currentTargetPart, currentLockedPos, shouldApplyOffset, cand.root.Velocity, currentTargetPart.Name, meta.isHighMob, isFacingAway, character
+                    end
+                end
+
+                -- PASS 3: Target Persistence (Grace Period for Bosses/Active Targets)
+                -- If we lost the target due to teleport/jump, try to find it again for 0.5s
+                if lastTarget and lastTarget.Parent and (tick() - lastTargetTime < 0.5) then
+                    local character = lastTarget
+                    local root = character:FindFirstChild("HumanoidRootPart")
+                    local hum = character:FindFirstChildOfClass("Humanoid")
+                    
+                    if root and hum and hum.Health > 0 then
+                        local meta = entityCache[character] or {isBoss = isBossEntity(character)}
+                        
+                        -- For bosses, we allow "loose" tracking (check more parts if needed)
+                        local targets = {"Head", "UpperTorso", "HumanoidRootPart", "LowerTorso", "RightUpperArm", "LeftUpperArm"}
+                        for _, name in ipairs(targets) do
+                            local p = character:FindFirstChild(name)
+                            if p then
+                                local vis, pos = checkPartVisibility(p, character, char, globalRayParams)
+                                if vis or meta.isBoss then -- Bosses can be tracked even if occluded for 0.5s
+                                    -- DYNAMIC SHIELD BYPASS (Persistence): Disable offset if downed
+                                    local headPos = character:FindFirstChild("Head") and character.Head.Position.Y or 0
+                                    local hDiff = math.abs(headPos - root.Position.Y)
+                                    local isCurrentlyProne = hum.PlatformStand or (hum:GetState() == Enum.HumanoidStateType.FallingDown) or (hum:GetState() == Enum.HumanoidStateType.Ragdoll) or (hum:GetState() == Enum.HumanoidStateType.Physics) or (hum.Sit) or (root.CFrame.UpVector.Y < 0.4) or (hDiff < 0.8) or (character:FindFirstChild("Stun") or character:FindFirstChild("Stunned"))
+                                    if isCurrentlyProne then meta.lastProneTime = tick() end
+                                    
+                                    local isProne = (tick() - (meta.lastProneTime or 0) < 0.5)
+                                    local shouldApplyOffset = meta.isShield and not isProne
+                                    
+                                    return p, pos or p.Position, shouldApplyOffset, root.Velocity, p.Name, meta.isHighMob, false, character
+                                end
+                            end
                         end
-                        
-                        return currentTargetPart, currentLockedPos, meta.isShield, cand.root.Velocity, currentTargetPart.Name, meta.isHighMob, isFacingAway, character
                     end
                 end
                 
@@ -1252,7 +1322,7 @@
                                 if debugLabel and targetChar then
                                     local mouseParams = UserInputService:GetMouseLocation()
                                     debugLabel.Position = UDim2.new(0, mouseParams.X + 20, 0, mouseParams.Y + 20)
-                                    debugLabel.Text = string.format("TARGET: %s\nPART: %s\nDIST: %d", targetChar.Name, partName, (LocalPlayer.Character.HumanoidRootPart.Position - targetPos).Magnitude)
+                                    debugLabel.Text = string.format("TARGET: %s\nOFFSET: %s", targetChar.Name, isShield and "ON" or "OFF")
                                     debugLabel.Visible = true
                                 end
 
@@ -1267,8 +1337,7 @@
                                 end
                                 
                                 -- 2. SHIELD OFFSET (Right + Up)
-                                -- Bypass if the enemy is facing away (back is turned)
-                                if isShield and not isFacingAway then
+                                if isShield then
                                     finalTargetPos = finalTargetPos + (currentCF.RightVector * aimRightOffset) + (currentCF.UpVector * aimUpOffset)
                                 end
                                 
@@ -1389,8 +1458,8 @@
                             local dist = (root.Position - myPos).Magnitude
                             local hl = char:FindFirstChild("ESPHighlight")
                             
-                            -- SLOT MANAGEMENT: Only highlight if < 150 studs
-                            if dist < 150 then
+                            -- SLOT MANAGEMENT: Only highlight if < 150 studs (UNLESS STAFF)
+                            if dist < 150 or isStaff then
                                 if not hl then
                                     hl = Instance.new("Highlight")
                                     hl.Name = "ESPHighlight"
@@ -1524,10 +1593,23 @@
                         local velocityMag = root and root.Velocity.Magnitude or 0
                         local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead) or (humanoid.Parent == nil)
                         
-                        -- If dead and not moving fast (rolling), remove highlight
-                        if isDead then
+                        -- NEW: Downed/Ragdoll Check (Keep ESP during pushes/knockdowns)
+                        local modelName = string.lower(model.Name)
+                        local isSleeping = false
+                        for _, name in ipairs(sleepingEnemies) do
+                            if string.find(modelName, name) then isSleeping = true break end
+                        end
+
+                        local isDowned = humanoid.PlatformStand or 
+                                         (humanoid:GetState() == Enum.HumanoidStateType.FallingDown) or 
+                                         (humanoid:GetState() == Enum.HumanoidStateType.Ragdoll) or
+                                         (humanoid:GetState() == Enum.HumanoidStateType.Physics)
+
+                        -- SKIP DEAD/INVALID 
+                        -- If dead and not moving fast (rolling) and NOT downed (pushed), remove highlight
+                        if isDead and not isDowned then
                             -- Only keep highlight if they are in a high-speed roll (death state bypass)
-                            if velocityMag < 20 then
+                            if velocityMag < 5 then -- Lowered from 20 to 5 to avoid losing highlight on slow push
                                 local highlight = model:FindFirstChild("InfectHighlight")
                                 if highlight then pcall(function() highlight:Destroy() end) end
                                 -- If they stay dead/still, remove from tracking
@@ -1541,8 +1623,8 @@
                             if root then
                                 local dist = (root.Position - myPos).Magnitude
                                 
-                                -- Distance Sanity Check (Don't remove Boss ESP even if close)
-                                if not isBossEntity(model) and dist < 2 then 
+                                -- Distance Sanity Check (Don't remove Boss/Whitelisted ESP even if close)
+                                if not (isBoss or isSleeping) and dist < 2 then 
                                     potentialEspTargets[model] = nil 
                                     local highlight = model:FindFirstChild("InfectHighlight")
                                     if highlight then highlight:Destroy() end

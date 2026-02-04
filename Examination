@@ -12,12 +12,12 @@
     local Camera = workspace.CurrentCamera
 
     -- [ SETTINGS ]
-    local walkSpeed = 16
+    local walkSpeed = 24
     local flySpeed = 50
     local flyEnabled = false
-    local noclipEnabled = true
+    local noclipEnabled = false
     local infiniteJumpEnabled = false
-    local infectEspEnabled = true
+    local infectEspEnabled = false
     local ammoEspEnabled = false
     local debugMode = false
     local validEnemies = {}
@@ -28,84 +28,46 @@
     local mainInputConn = nil
 
     -- [ ANTI-STAFF LOGIC ]
-    local function detectStaff(player)
-        if not player or player == LocalPlayer then return false end
-        
-        -- 1. Creator Check
-        if player.UserId == game.CreatorId and game.CreatorType == Enum.CreatorType.User then
-            return true, "Game Creator"
-        end
-        
-        -- 2. Group Rank Check
-        if antiStaffGroupId > 0 then
-            local s, rank = pcall(function() return player:GetRankInGroup(antiStaffGroupId) end)
-            if s and rank >= 200 then -- Most games use 200+ for staff
-                return true, "Group Staff (Rank " .. rank .. ")"
-            end
-        end
-        
-        -- 3. Name/Display Name Keywords
-        local keywords = {"mod", "admin", "staff", "dev", "helper", "owner"}
-        local name = string.lower(player.Name)
-        local display = string.lower(player.DisplayName)
-        
-        for _, kw in ipairs(keywords) do
-            if string.find(name, kw) or string.find(display, kw) then
-                return true, "Keyword Match: " .. kw
-            end
-        end
-        
-        return false
-    end
-
     local function handleStaffDetection(player, reason)
-        if not antiStaffEnabled then return end
-        if detectedStaff[player.UserId] then return end
+        if not antiStaffEnabled or detectedStaff[player.UserId] then return end
         detectedStaff[player.UserId] = true
         
         if antiStaffAutoLeave then
-            LocalPlayer:Kick("\nCó Staff vào kiểm tra. Nên Script tự Kick bạn ra server")
+            LocalPlayer:Kick("\nStaff detected: " .. player.Name .. " (" .. reason .. ")")
         else
-            -- Visual Alert if not auto-leaving
-            if pcall(function()
+            pcall(function()
                 game:GetService("StarterGui"):SetCore("SendNotification", {
                     Title = "!!! STAFF DETECTED !!!",
                     Text = player.Name .. " is a " .. reason,
                     Duration = 10,
                     Button1 = "Leave Now"
                 })
-            end) then end
+            end)
         end
     end
 
-    Players.PlayerAdded:Connect(function(player)
-        if not antiStaffEnabled then return end
+    local function checkPlayerStaff(player)
+        if not player or player == LocalPlayer then return end
         
-        -- 1. FAST CHECK (Milliseconds): Keywords and Creator ID
-        local keywords = {"mod", "admin", "staff", "dev", "helper", "owner"}
-        local name = string.lower(player.Name)
-        local display = string.lower(player.DisplayName)
+        -- Immediate Checks
         local isCreator = (player.UserId == game.CreatorId)
+        local keywords = {"mod", "admin", "staff", "dev", "helper", "owner"}
+        local nameStr = string.lower(player.Name .. player.DisplayName)
         
-        local matchesKeyword = false
         for _, kw in ipairs(keywords) do
-            if string.find(name, kw) or string.find(display, kw) then
-                matchesKeyword = true
+            if string.find(nameStr, kw) then
                 handleStaffDetection(player, "Keyword Match: " .. kw)
-                break
+                return
             end
         end
         
-        if isCreator and not matchesKeyword then
+        if isCreator then
             handleStaffDetection(player, "Game Creator")
+            return
         end
-        
-        if isCreator or matchesKeyword then return end
 
-        -- 2. SLOW CHECK (Background): Group Rank
+        -- Background Rank Check
         task.spawn(function()
-            task.wait(0.5) -- Short wait for Rank API stability
-            if not antiStaffEnabled then return end
             if antiStaffGroupId > 0 then
                 local s, rank = pcall(function() return player:GetRankInGroup(antiStaffGroupId) end)
                 if s and rank >= 200 then
@@ -113,7 +75,9 @@
                 end
             end
         end)
-    end)
+    end
+
+    Players.PlayerAdded:Connect(checkPlayerStaff)
 
     local nameBlacklist = {
         "npc", "hizoimviewmodel", "viewmodel", -- System
@@ -658,11 +622,11 @@
 
     -- 1. WalkSpeed
     local wsConnection = nil
-    createToggleInput(LocalTab, "WalkSpeed", 16, false, function(val, state)
+    createToggleInput(LocalTab, "WalkSpeed", 24, false, function(val, state)
         if wsConnection then wsConnection:Disconnect() wsConnection = nil end
         
         if state then
-            walkSpeed = tonumber(val) or 16
+            walkSpeed = tonumber(val) or 24
             
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
                 LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed
@@ -762,7 +726,7 @@
 
     -- 3. FullBright
     local fullBrightConnection = nil
-    createToggle(VisualsTab, "FullBright", true, function(state)
+    createToggle(VisualsTab, "FullBright", false, function(state)
         if state then
             fullBrightConnection = RunService.RenderStepped:Connect(function()
                 if not ScreenGui.Parent then
@@ -787,7 +751,7 @@
 
     -- 4. Noclip (Walk Through Walls)
     local noclipConnection = nil
-    createToggle(LocalTab, "Noclip", true, function(state)
+    createToggle(LocalTab, "Noclip", false, function(state)
         if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
         
         if state then
@@ -834,15 +798,14 @@
     -- CATEGORY: COMBAT
     -- ====================
 
-    local aimEnabled = true
+    local aimEnabled = false
     local aimKey = Enum.UserInputType.MouseButton2
     local aimFOV = 200
     local aimSmoothness = 0.25 -- Lower = Smoother, Higher = Snappier (Tuned to reduce jitter)
-    local aimRightOffset = 0.7
+    local aimRightOffset = 0.6
     local aimUpOffset = 0.4
     local lastTargetPart = nil -- Stickiness
     local smoothedVelocity = Vector3.new()
-    local aimBotDebug = false
     local validEnemies = {}
     local entityCache = {} -- Cache for NPC metadata (Shield, Mutant, etc.)
 
@@ -858,8 +821,8 @@
 
         -- GENERAL GROUPS (Red ESP / Normal Priority)
         -- These keywords catch ALL numbered or suffixed variations automatically.
-        ["fireslasher"] = {isMutant = true},
         ["slasher"] = {isMutant = true},
+        ["fireslasher"] = {isMutant = true},
         ["bomber"] = {isMutant = true},
         ["shielder"] = {isMutant = true},
         ["lurker"] = {isMutant = true},
@@ -998,47 +961,41 @@
     local lastLoggedTarget = nil -- Store last NPC printed in debug logs
 
     -- 2. Aim Logic
+    -- Shared Raycast Parameters
     local globalRayParams = RaycastParams.new()
     globalRayParams.FilterType = Enum.RaycastFilterType.Exclude
     globalRayParams.IgnoreWater = true
 
-    -- 2. Aim Logic (Optimized)
-                    -- Helper function extracted to reduce register pressure in getClosestTarget
-                    local function checkPartVisibility(part, targetModel, myChar, rayParams)
-    if not part then return false end
-    local origin = Camera.CFrame.Position
-    local tPos = part.Position
-    local direction = (tPos - origin)
+    local function checkPartVisibility(part, targetModel, myChar)
+        if not part then return false end
+        local origin = Camera.CFrame.Position
+        local tPos = part.Position
+        local direction = (tPos - origin)
 
-    local currentFilter = {myChar, Camera}
-    for i = 1, 4 do 
-        rayParams.FilterDescendantsInstances = currentFilter
-        local result = workspace:Raycast(origin, direction, rayParams)
-        if not result then return true, tPos end
-        
-        local hit = result.Instance
-        local isPartOfChar = hit:IsDescendantOf(targetModel)
-        
-        local lowerName = string.lower(hit.Name)
-        if string.find(lowerName, "shield") or string.find(lowerName, "khiên") then 
-            -- Fix: If it's THEIR shield, we consider it "visible" enough to lock
-            if isPartOfChar then
-                return true, tPos
+        local currentFilter = {myChar, Camera}
+        for i = 1, 4 do 
+            globalRayParams.FilterDescendantsInstances = currentFilter
+            local result = workspace:Raycast(origin, direction, globalRayParams)
+            if not result then return true, tPos end
+            
+            local hit = result.Instance
+            local isPartOfChar = hit:IsDescendantOf(targetModel)
+            
+            local lowerName = string.lower(hit.Name)
+            if string.find(lowerName, "shield") or string.find(lowerName, "khiên") then 
+                if isPartOfChar then return true, tPos else return false end
+            end
+            
+            if isPartOfChar or hit == part then return true, tPos end
+            
+            if hit.Transparency > 0.7 or not hit.CanCollide then
+                table.insert(currentFilter, hit)
             else
-                return false 
+                return false
             end
         end
-        
-        if isPartOfChar or hit == part then return true, tPos end
-        
-        if hit.Transparency > 0.7 or not hit.CanCollide then
-            table.insert(currentFilter, hit)
-        else
-            return false
-        end
+        return false
     end
-    return false
-                    end
 
                     -- 2. Aim Logic (Optimized)
                     local function getClosestTarget()
@@ -1063,14 +1020,15 @@
         if not humanoid then humanoid = enemy:FindFirstChild("Humanoid") end
         if not root or not humanoid then continue end
 
-        -- Metadata Cache
+        -- Metadata Cache (Consolidated)
         local meta = entityCache[enemy]
         if not meta then
+            local targetData = getTargetData(enemy.Name)
             meta = {
-                isMutant = isMutantEntity(enemy),
-                isBoss = isBossEntity(enemy),
+                isMutant = targetData and targetData.isMutant or false,
+                isBoss = targetData and targetData.isBoss or false,
                 isShield = isShieldEntity(enemy),
-                isHighMob = isHighMobilityEntity(enemy)
+                elite = targetData and targetData.elite or false
             }
             entityCache[enemy] = meta
         end
@@ -1081,11 +1039,14 @@
         if dist3D > maxRange then continue end
 
         local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
+        local isAmbush = (dist3D < 20) -- 360 DEGREEE LOGIC: Detect threats behind/close automatically
         
-        if not onScreen then continue end
+        -- Filter: Only allow if on screen OR extremely close (360 defense)
+        if not (onScreen or isAmbush) then continue end
 
-        local mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-        if mouseDist > aimFOV then continue end
+        local mouseDist = onScreen and (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude or (aimFOV * 2)
+        -- FOV Filter: Only applies to enemies outside the Ambush/Danger zone
+        if not isAmbush and mouseDist > aimFOV then continue end
 
         -- Death/State Logic (Strict Filter)
         local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
@@ -1111,7 +1072,11 @@
         
         if isDowned then
             -- BOSS/SHIELD/ELITE EXEMPTION: Track bosses, shield-enemies, and elites while alive but downed
-            if not (meta.isBoss or meta.isShield or meta.elite) then
+            -- ADDED: Slasher/FireSlasher exemption to keep lock as normal enemies
+            local name = string.lower(enemy.Name)
+            local isSlasher = string.find(name, "slasher")
+            
+            if not (meta.isBoss or meta.isShield or meta.elite or isSlasher) then
                 local velocityMag = root.Velocity.Magnitude
                 -- If they are downed/ragdolled and not moving extremely fast, skip
                 if velocityMag <= 15.0 then continue end
@@ -1122,7 +1087,9 @@
         -- If < 15 studs, ignore Anchored status (Self Defense Override)
         -- If Elite/Mutant/Boss/Shield, ignore Anchored status
         local isSelfDefense = (dist3D <= 15)
-        local isExempt = meta.isBoss or meta.isShield or meta.elite or meta.isMutant or hasWeapon(enemy)
+        local name = string.lower(enemy.Name)
+        local isSlasher = string.find(name, "slasher")
+        local isExempt = meta.isBoss or meta.isShield or meta.elite or meta.isMutant or isSlasher or hasWeapon(enemy)
         
         if root.Anchored and not (isSelfDefense or isExempt) then continue end
         
@@ -1150,19 +1117,20 @@
             return a.dist3D < b.dist3D -- If both close, closest wins
         end
 
-        -- TIER 2: STANDARD SCORING
-        -- Heavy weight on 3D Distance (Proximity) vs Mouse Distance
-        -- Old: Mouse + Dist/5
-        -- New: Dist*2 + Mouse (Proximity is king)
-        -- UPDATE: User wants "Auto switch to closer one if current goes away".
-        -- Increased distance weight massively (1 stud = 20 pixels).
+        -- TIER 2: STANDARD SCORING (Distance & Mouse Proximity)
         local scoreA = (a.dist3D * 20) + a.dist - (a.meta.isBoss and 300 or 0)
         local scoreB = (b.dist3D * 20) + b.dist - (b.meta.isBoss and 300 or 0)
         
-        -- STICKINESS FACTOR: Slight bonus for maintaining current target to prevent jitter
+        -- STICKINESS: Maintain target focus
         if a.model == lastTarget then scoreA = scoreA - 50 end
         if b.model == lastTarget then scoreB = scoreB - 50 end
-        
+
+        -- BACKSTAB PRIORITY: Bonus for targets facing away (vulnerable)
+        local aIsBack = (a.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.5)
+        local bIsBack = (b.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.5)
+        if aIsBack then scoreA = scoreA - 80 end
+        if bIsBack then scoreB = scoreB - 80 end
+
         return scoreA < scoreB
     end)
 
@@ -1305,47 +1273,18 @@
             isAiming = false 
             lastTarget = nil 
             lastTargetPart = nil
-            lastLoggedTarget = nil
             smoothedVelocity = Vector3.new()
         end
     end)
 
-    local debugLabel = nil
     RunService.RenderStepped:Connect(function()
         if not ScreenGui.Parent then return end
         
-        -- Debug Label Management
-        if aimBotDebug then
-            if not debugLabel then
-                debugLabel = Instance.new("TextLabel")
-                debugLabel.Name = "AimDebugLabel"
-                debugLabel.Size = UDim2.new(0, 200, 0, 50)
-                debugLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-                debugLabel.BackgroundTransparency = 0.5
-                debugLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-                debugLabel.Font = Enum.Font.Code
-                debugLabel.TextSize = 14
-                debugLabel.Visible = false
-                debugLabel.Parent = ScreenGui
-                
-                local uiCorner = Instance.new("UICorner")
-                uiCorner.Parent = debugLabel
-            end
-        else
-            if debugLabel then debugLabel:Destroy() debugLabel = nil end
-        end
 
         if aimEnabled then
             if isAiming then
                 local targetPart, targetPos, isShield, velocity, partName, isHighMob, isFacingAway, targetChar = getClosestTarget()
                 if targetPart and targetPos then
-                    -- Update Debug Label
-                    if debugLabel and targetChar then
-                        local mouseParams = UserInputService:GetMouseLocation()
-                        debugLabel.Position = UDim2.new(0, mouseParams.X + 20, 0, mouseParams.Y + 20)
-                        debugLabel.Text = string.format("TARGET: %s\nOFFSET: %s", targetChar.Name, isShield and "ON" or "OFF")
-                        debugLabel.Visible = true
-                    end
 
                     local currentCF = Camera.CFrame
                     local finalTargetPos = targetPos
@@ -1363,8 +1302,14 @@
                                     if isShield then
                                         finalTargetPos = finalTargetPos + (currentCF.RightVector * aimRightOffset) + (currentCF.UpVector * aimUpOffset)
                                     end
+
+                                    -- 3. BACK AIM LOGIC (New)
+                                    if isFacingAway then
+                                        -- Aim slightly "towards" the player to ensure back hit registration
+                                        finalTargetPos = finalTargetPos - (currentCF.LookVector * 0.4)
+                                    end
                                     
-                                    -- 3. ADAPTIVE SMOOTHING (Fine-tuned for stability)
+                                    -- 4. ADAPTIVE SMOOTHING (Fine-tuned for stability)
                                     local velocityMag = smoothedVelocity.Magnitude
                                     local adaptiveSmooth = aimSmoothness
                                     
@@ -1376,23 +1321,13 @@
                                     
                                     local targetCF = CFrame.new(currentCF.Position, finalTargetPos)
                                     Camera.CFrame = currentCF:Lerp(targetCF, adaptiveSmooth)
-                else
-                    if debugLabel then debugLabel.Visible = false end
                 end
-            else
-                if debugLabel then debugLabel.Visible = false end
             end
-        else
-            if debugLabel then debugLabel.Visible = false end
         end
     end)
 
-    createToggle(CombatTab, "Aim Bot", true, function(state)
+    createToggle(CombatTab, "Aim Bot", false, function(state)
         aimEnabled = state
-    end)
-
-    createToggle(CombatTab, "Aim Debug (F9)", false, function(state)
-        aimBotDebug = state
     end)
 
     -- ====================
@@ -1759,7 +1694,7 @@
         end)
     end
 
-    createToggle(VisualsTab, "Infected ESP", true, function(state)
+    createToggle(VisualsTab, "Infected ESP", false, function(state)
         infectEspEnabled = state
         
         if state then
@@ -1998,35 +1933,6 @@
                     task.delay(1, function() if h then h:Destroy() end end)
                 end
             end
-        end
-
-        -- [ DEEP REMOTE SCANNER (Key: P) ] (Swapped)
-        if input.KeyCode == Enum.KeyCode.P and not gpe then
-            print("==================================================")
-            print("[ DEEP SCANNER ] STARTING SCAN...")
-            print("Targeting: RemoteEvent, RemoteFunction, Scripts")
-            print("Keywords: Class, Infect, Zombie, Data, Logic")
-            print("==================================================")
-
-            local function scan(container)
-                for _, obj in ipairs(container:GetDescendants()) do
-                    if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") or obj:IsA("ModuleScript") or obj:IsA("Folder") then
-                        local n = string.lower(obj.Name)
-                        if string.find(n, "class") or string.find(n, "infect") or string.find(n, "zombie") or string.find(n, "data") or string.find(n, "logic") or string.find(n, "ability") or string.find(n, "skill") then
-                            print("FOUND: [" .. obj.ClassName .. "] " .. obj.Name .. "  Wait Ancestor: " .. (obj.Parent and obj.Parent.Name or "nil"))
-                            -- Print Full Path for clarity
-                            -- print("   > Path: " .. obj:GetFullName()) 
-                        end
-                    end
-                end
-            end
-
-            print("--- SCANNING REPLICATEDSTORAGE ---")
-            scan(game:GetService("ReplicatedStorage"))
-            print("--- SCANNING WORKSPACE ---")
-            scan(workspace)
-            print("==================================================")
-            print("[ DEEP SCANNER ] SCAN COMPLETE")
         end
     end)
 

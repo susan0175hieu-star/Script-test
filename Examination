@@ -26,6 +26,8 @@
                 local antiStaffGroupId = 34159688 -- Specific Game Group ID
                 local detectedStaff = {}
 
+
+
                 -- [ ANTI-STAFF LOGIC ]
                 local function detectStaff(player)
                     if not player or player == LocalPlayer then return false end
@@ -164,6 +166,7 @@
                 MainFrame.Position = UDim2.new(0.5, -RESX/2, 0.5, -RESY/2)
                 MainFrame.BackgroundColor3 = THEME.Background
                 MainFrame.BorderSizePixel = 0
+                MainFrame.Visible = true
                 MainFrame.Parent = ScreenGui
 
                 local UICorner = Instance.new("UICorner")
@@ -178,6 +181,8 @@
                 ModalFix.Text = ""
                 ModalFix.Modal = true
                 ModalFix.Parent = MainFrame
+
+
 
                 -- > Header
                 local Header = Instance.new("Frame")
@@ -1118,10 +1123,18 @@
 
                     -- Death/State Logic (Strict Filter)
                     local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
-                    if isDead then
+                    
+                    -- NEW: Downed/Ragdoll Check (Fixes Aiming at Ground)
+                    local isDowned = humanoid.PlatformStand or 
+                                     (humanoid:GetState() == Enum.HumanoidStateType.FallingDown) or 
+                                     (humanoid:GetState() == Enum.HumanoidStateType.Ragdoll)
+                    
+                    if isDead or isDowned then
                         local velocityMag = root.Velocity.Magnitude
-                        -- Strict Bypass for High-Speed Rolls
-                        if velocityMag <= 25.0 then continue end
+                        -- Strict Bypass for High-Speed Rolls (only if not completely ragdolled)
+                        if not isDowned and velocityMag <= 25.0 then continue end
+                        -- If they are downed/ragdolled and not moving extremely fast, skip
+                        if isDowned and velocityMag <= 15.0 then continue end
                     end
 
                     if root.Anchored and not hasWeapon(enemy) then continue end

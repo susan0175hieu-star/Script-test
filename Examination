@@ -1861,8 +1861,8 @@
                     end
                 end)
 
-                -- 1.1 Anti-Staff Protection (Moved here)
-                createToggle(LocalTab, "Anti-Staff Protection", false, function(state)
+                -- 1.1 Anti Staff (Moved here)
+                createToggle(LocalTab, "Anti Staff", false, function(state)
                     antiStaffEnabled = state
                     antiStaffAutoLeave = state -- Combined: Enabling detection also enables auto-leave
                     antiStaffGroupId = 34159688 -- Hardcoded for this game

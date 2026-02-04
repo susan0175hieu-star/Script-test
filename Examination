@@ -1,4 +1,4 @@
-                 -- [ SERVICES ]
+                -- [ SERVICES ]
                 local Players = game:GetService("Players")
                 local RunService = game:GetService("RunService")
                 local UserInputService = game:GetService("UserInputService")
@@ -1141,14 +1141,14 @@
                     if isCurrentlyProne then meta.lastProneTime = tick() end
                     local isDowned = (tick() - (meta.lastProneTime or 0) < 0.5)
                     
-                    if isDead or isDowned then
-                        -- BOSS/SHIELD EXEMPTION: Always track bosses and shield-enemies even if downed
+                    if isDead then continue end -- FORCE RELEASE DEAD TARGETS
+                    
+                    if isDowned then
+                        -- BOSS/SHIELD EXEMPTION: Track bosses and shield-enemies while alive but downed
                         if not (meta.isBoss or meta.isShield) then
                             local velocityMag = root.Velocity.Magnitude
-                            -- Strict Bypass for High-Speed Rolls (only if not completely ragdolled)
-                            if not isDowned and velocityMag <= 25.0 then continue end
                             -- If they are downed/ragdolled and not moving extremely fast, skip
-                            if isDowned and velocityMag <= 15.0 then continue end
+                            if velocityMag <= 15.0 then continue end
                         end
                     end
 

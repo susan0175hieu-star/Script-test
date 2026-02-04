@@ -118,7 +118,17 @@
 
                 local nameBlacklist = {
                     "npc", "hizoimviewmodel", "viewmodel", -- System
-                    "adam_dgf", "victim", "decoration2", "aaaaa", "victor" -- Custom
+                    "adam_dgf", "victim", "decoration2", "aaaaa", "victor", -- Custom
+                    "statue", "decoration", "corpse", "prop", "dummy"
+                }
+
+                -- WHITELIST: NPCs that should show ESP even if Anchored (Sleeping/Ambushers)
+                local sleepingEnemies = {
+                    "gilbert",
+                    "lurkerrsu4",
+                    "lurkerrsu5",
+                    "lurkerlab",
+                    "mikhail"
                 }
 
                 local function isNPCBlacklisted(name)
@@ -1515,9 +1525,9 @@
                         local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead) or (humanoid.Parent == nil)
                         
                         -- If dead and not moving fast (rolling), remove highlight
-                        if not root or not humanoid or isDead then
+                        if isDead then
                             -- Only keep highlight if they are in a high-speed roll (death state bypass)
-                            if isDead and velocityMag < 20 then
+                            if velocityMag < 20 then
                                 local highlight = model:FindFirstChild("InfectHighlight")
                                 if highlight then pcall(function() highlight:Destroy() end) end
                                 -- If they stay dead/still, remove from tracking
@@ -1601,24 +1611,31 @@
                     if not root then return end
 
                     local function isValidEnemy()
-                    -- 0. Strict Self Check & Player Check
-                    if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
-                    if Players:GetPlayerFromCharacter(model) or Players:FindFirstChild(model.Name) then return false end
-                    
-                    -- 0.1 Name Blacklist 
-                    if isNPCBlacklisted(model.Name) then return false end
-                        
-                        -- 0.2 ForceField Check
-                        -- BYPASS if Armed/Boss (Fixes ESP drop during skills)
-                        local isBoss = isBossEntity(model)
-                        if model:FindFirstChildOfClass("ForceField") and not hasWeapon(model) and not isBoss then return false end
+                        -- 0. Strict Self Check & Player Check
+                        if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
+                        if Players:GetPlayerFromCharacter(model) or Players:FindFirstChild(model.Name) then return false end
 
-                        -- 1. Has weapon or is Boss? ALWAYS Valid.
-                        if hasWeapon(model) or isBoss then return true end
+                        -- 0.1 Name Blacklist (Prop filter)
+                        if isNPCBlacklisted(model.Name) then return false end
                         
-                        -- 2. Anchored? INVALID (Statue) until unanchored.
-                        -- If armed/boss, we already returned true above, so this checks only unarmed statues
-                        if root.Anchored then return false end
+                        -- 0.2 Boss Check (Always visible)
+                        local isBoss = isBossEntity(model)
+                        if isBoss then return true end
+
+                        -- 1. Sleeping Enemy Whitelist (Show even if Anchored)
+                        local isSleeping = false
+                        local modelName = string.lower(model.Name)
+                        for _, name in ipairs(sleepingEnemies) do
+                            if string.find(modelName, name) then
+                                isSleeping = true
+                                break
+                            end
+                        end
+
+                        -- 2. Anchored check (Statue/Decoration filter)
+                        -- If they are anchored and NOT a Boss and NOT a Sleeping enemy, ignore them.
+                        if root.Anchored and not isSleeping then return false end
+                        
                         return true
                     end
 

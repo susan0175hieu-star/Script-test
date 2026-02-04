@@ -132,7 +132,7 @@
         "riserhazmat2",
         "riserhazmat",
         "fireriser",
-        "rif stationary"
+        "rif stationary",
     }
 
     local function isNPCBlacklisted(name)
@@ -852,16 +852,19 @@
         ["chimera"] = {isBoss = true, isMutant = true},
         
         -- ELITES (Orange ESP / Priority)
-        ["slasher"] = {elite = true, isMutant = true},
-        ["fireslasher"] = {elite = true, isMutant = true},
         ["mikhail"] = {elite = true, isMutant = true},
         ["gilbert"] = {elite = true, isMutant = true},
+        ["sin"] = {elite = true, isMutant = true},
 
         -- GENERAL GROUPS (Red ESP / Normal Priority)
         -- These keywords catch ALL numbered or suffixed variations automatically.
+        ["fireslasher"] = {isMutant = true},
+        ["slasher"] = {isMutant = true},
         ["bomber"] = {isMutant = true},
         ["shielder"] = {isMutant = true},
         ["lurker"] = {isMutant = true},
+        ["lurkerrsu4"] = {isMutant = true},
+        ["lurkerrsu5"] = {isMutant = true},
         ["riserhazmat"] = {isMutant = true},
         ["fireriser"] = {isMutant = true},
         ["crawler"] = {isMutant = true},
@@ -871,7 +874,6 @@
         ["chemical"] = {isMutant = true},
         ["toxic"] = {isMutant = true},
         ["rif"] = {isMutant = true},
-        ["sin"] = {isMutant = true},
         ["ci"] = {isMutant = true}
     }
 

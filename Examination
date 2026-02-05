@@ -1,602 +1,596 @@
-    -- [ SERVICES ]
-    local Players = game:GetService("Players")
-    local RunService = game:GetService("RunService")
-    local UserInputService = game:GetService("UserInputService")
-    local CoreGui = game:GetService("CoreGui")
-    local Lighting = game:GetService("Lighting")    
-    local TeleportService = game:GetService("TeleportService")
-    local Teams = game:GetService("Teams")
+        -- [ SERVICES ]
+        local Players = game:GetService("Players")
+        local RunService = game:GetService("RunService")
+        local UserInputService = game:GetService("UserInputService")
+        local CoreGui = game:GetService("CoreGui")
+        local Lighting = game:GetService("Lighting")    
+        local TeleportService = game:GetService("TeleportService")
+        local Teams = game:GetService("Teams")
 
-    -- [ VARIABLES ]
-    local LocalPlayer = Players.LocalPlayer
-    local Camera = workspace.CurrentCamera
+        -- [ VARIABLES ]
+        local LocalPlayer = Players.LocalPlayer
+        local Camera = workspace.CurrentCamera
 
-    -- [ SETTINGS ]
-    local walkSpeed = 24
-    local flySpeed = 50
-    local flyEnabled = false
-    local noclipEnabled = false
-    local infiniteJumpEnabled = false
-    local infectEspEnabled = false
-    local ammoEspEnabled = false
-    local debugMode = false
-    local validEnemies = {}
-    local antiStaffEnabled = false
-    local antiStaffAutoLeave = false
-    local antiStaffGroupId = 34159688 -- Specific Game Group ID
-    local detectedStaff = {}
-    local mainInputConn = nil
+        -- [ SETTINGS ]
+        local walkSpeed = 24
+        local flySpeed = 50
+        local flyEnabled = false
+        local noclipEnabled = false
+        local infiniteJumpEnabled = false
+        local infectEspEnabled = false
+        local ammoEspEnabled = false
+        local debugMode = false
+        local validEnemies = {}
+        local antiStaffEnabled = false
+        local antiStaffAutoLeave = false
+        local antiStaffGroupId = 34159688 -- Specific Game Group ID
+        local detectedStaff = {}
+        local mainInputConn = nil
 
-    -- [ ANTI-STAFF LOGIC ]
-    local function handleStaffDetection(player, reason)
-        if not antiStaffEnabled or detectedStaff[player.UserId] then return end
-        detectedStaff[player.UserId] = true
-        
-        if antiStaffAutoLeave then
-            LocalPlayer:Kick("\nStaff detected: " .. player.Name .. " (" .. reason .. ")")
-        else
-            pcall(function()
-                game:GetService("StarterGui"):SetCore("SendNotification", {
-                    Title = "!!! STAFF DETECTED !!!",
-                    Text = player.Name .. " is a " .. reason,
-                    Duration = 10,
-                    Button1 = "Leave Now"
-                })
-            end)
-        end
-    end
+        local friendlyPlayers = {} -- No longer needs priority tracking, automated below
 
-    local function checkPlayerStaff(player)
-        if not player or player == LocalPlayer then return end
-        
-        -- Immediate Checks
-        local isCreator = (player.UserId == game.CreatorId)
-        local keywords = {"mod", "admin", "staff", "dev", "helper", "owner"}
-        local nameStr = string.lower(player.Name .. player.DisplayName)
-        
-        for _, kw in ipairs(keywords) do
-            if string.find(nameStr, kw) then
-                handleStaffDetection(player, "Keyword Match: " .. kw)
-                return
+        local function isPlayerInfected(player)
+            if not player or not player.Character then return false end
+            local team = player.Team
+            if team and (string.find(string.lower(team.Name), "infect") or string.find(string.lower(team.Name), "viral")) then
+                return true
             end
-        end
-        
-        if isCreator then
-            handleStaffDetection(player, "Game Creator")
-            return
+            local charName = string.lower(player.Character.Name)
+            if string.find(charName, "viral") or string.find(charName, "infect") then
+                return true
+            end
+            return false
         end
 
-        -- Background Rank Check
-        task.spawn(function()
+        -- [ ANTI-STAFF LOGIC ]
+        local function detectStaff(player)
+            if not player or player == LocalPlayer then return false end
+            
+            -- 1. Game Creator
+            if player.UserId == game.CreatorId then
+                return true, "Game Creator"
+            end
+            
+            -- 2. Name Keywords
+            local keywords = {"mod", "admin", "staff", "dev", "helper", "owner"}
+            local nameStr = string.lower(player.Name .. player.DisplayName)
+            for _, kw in ipairs(keywords) do
+                if string.find(nameStr, kw) then
+                    return true, "Keyword Match: " .. kw
+                end
+            end
+            
+            -- 3. Group Rank
             if antiStaffGroupId > 0 then
                 local s, rank = pcall(function() return player:GetRankInGroup(antiStaffGroupId) end)
                 if s and rank >= 200 then
-                    handleStaffDetection(player, "Group Staff (Rank " .. rank .. ")")
+                    return true, "Group Staff (Rank " .. rank .. ")"
                 end
             end
-        end)
-    end
-
-    Players.PlayerAdded:Connect(checkPlayerStaff)
-
-    local nameBlacklist = {
-        "npc", "hizoimviewmodel", "viewmodel", -- System
-        "adam_dgf", "victim", "decoration2", "aaaaa", "victor", -- Custom
-        "statue", "decoration", "corpse", "prop", "dummy"
-    }
-
-    -- WHITELIST: NPCs that should show ESP even if Anchored (Sleeping/Ambushers)
-    local sleepingEnemies = {
-        "gilbert",
-        "lurkerrsu4",
-        "lurkerrsu5",
-        "lurkerlab",
-        "mikhail",
-        "lurkerrsu2",
-        "riserhazmat2",
-        "riserhazmat",
-        "fireriser",
-        "rif stationary",
-    }
-
-    local function isNPCBlacklisted(name)
-        if not name then return false end
-        local n = string.lower(name)
-        for _, pattern in ipairs(nameBlacklist) do
-            if string.find(n, pattern) then return true end
-        end
-        return false
-    end
-
-    -- [ UI CONFIGURATION ]
-    local RESX, RESY = 900, 300 -- Compact Height for 3 columns
-    local THEME = {
-        Background = Color3.fromRGB(30, 30, 35),
-        Header = Color3.fromRGB(25, 25, 30),
-        Accent = Color3.fromRGB(0, 120, 215),
-        Text = Color3.fromRGB(240, 240, 240),
-        Description = Color3.fromRGB(180, 180, 180)
-    }
-
-    -- [ STARTUP CLEANUP ]
-    if CoreGui:FindFirstChild("ExaminationGUI") then CoreGui.ExaminationGUI:Destroy() end
-    if LocalPlayer.PlayerGui:FindFirstChild("ExaminationGUI") then LocalPlayer.PlayerGui.ExaminationGUI:Destroy() end
-    if CoreGui:FindFirstChild("ExaminationESP") then CoreGui.ExaminationESP:Destroy() end
-    if CoreGui:FindFirstChild("InfectESP") then CoreGui.InfectESP:Destroy() end
-    if CoreGui:FindFirstChild("AmmoESP") then CoreGui.AmmoESP:Destroy() end
-
-    -- [ MAIN UI CREATION ]
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "ExaminationGUI"
-    ScreenGui.ResetOnSpawn = false
-
-    -- Security Fallback
-    if pcall(function() ScreenGui.Parent = CoreGui end) then
-        -- Parented to CoreGui
-    else
-        ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    end
-
-    -- > Main Frame
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, RESX, 0, RESY)
-    MainFrame.Position = UDim2.new(0.5, -RESX/2, 0.5, -RESY/2)
-    MainFrame.BackgroundColor3 = THEME.Background
-    MainFrame.BorderSizePixel = 0
-    MainFrame.Visible = true
-    MainFrame.Parent = ScreenGui
-
-    local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(0, 8)
-    UICorner.Parent = MainFrame
-
-    -- Modal Fix (Force mouse unlock when GUI is visible)
-    local ModalFix = Instance.new("TextButton")
-    ModalFix.Name = "ModalFix"
-    ModalFix.Size = UDim2.new(0, 0, 0, 0)
-    ModalFix.BackgroundTransparency = 1
-    ModalFix.Text = ""
-    ModalFix.Modal = true
-    ModalFix.Parent = MainFrame
-
-    -- > Header
-    local Header = Instance.new("Frame")
-    Header.Name = "Header"
-    Header.Size = UDim2.new(1, 0, 0, 40)
-    Header.BackgroundColor3 = THEME.Header
-    Header.BorderSizePixel = 0
-    Header.Parent = MainFrame
-
-    local HeaderCorner = Instance.new("UICorner")
-    HeaderCorner.CornerRadius = UDim.new(0, 8)
-    HeaderCorner.Parent = Header
-
-    -- Header Cover (Square bottom corners)
-    local HeaderCover = Instance.new("Frame")
-    HeaderCover.Size = UDim2.new(1, 0, 0, 10)
-    HeaderCover.Position = UDim2.new(0, 0, 1, -10)
-    HeaderCover.BackgroundColor3 = THEME.Header
-    HeaderCover.BorderSizePixel = 0
-    HeaderCover.Parent = Header
-
-    -- Title
-    local Title = Instance.new("TextLabel")
-    Title.Name = "Title"
-    Title.Text = "Examination GUI"
-    Title.Font = Enum.Font.GothamBold
-    Title.TextSize = 18
-    Title.TextColor3 = THEME.Text
-    Title.Size = UDim2.new(1, -20, 1, 0)
-    Title.Position = UDim2.new(0, 10, 0, 0)
-    Title.BackgroundTransparency = 1
-    Title.TextXAlignment = Enum.TextXAlignment.Left
-    Title.Parent = Header
-
-    local TitleStroke = Instance.new("UIStroke")
-    TitleStroke.Thickness = 1.2
-    TitleStroke.Color = Color3.fromRGB(0, 0, 0)
-    TitleStroke.Transparency = 0.5
-    TitleStroke.Parent = Title
-
-    -- [ HEADER BUTTONS ]
-
-    -- 1. Rejoin Button (Center-Left)
-    local RejoinButton = Instance.new("TextButton")
-    RejoinButton.Name = "RejoinButton"
-    RejoinButton.Text = "Rejoin"
-    RejoinButton.Size = UDim2.new(0, 80, 0, 30)
-    RejoinButton.AnchorPoint = Vector2.new(1, 0.5)
-    RejoinButton.Position = UDim2.new(0.5, -5, 0.5, 0)
-    RejoinButton.BackgroundTransparency = 1
-    RejoinButton.TextColor3 = THEME.Description
-    RejoinButton.Font = Enum.Font.GothamBold
-    RejoinButton.TextSize = 16
-    RejoinButton.Parent = Header
-
-    local RejoinStroke = Instance.new("UIStroke")
-    RejoinStroke.Thickness = 0.5
-    RejoinStroke.Color = Color3.fromRGB(0, 0, 0)
-    RejoinStroke.Parent = RejoinButton
-
-    RejoinButton.MouseButton1Click:Connect(function()
-        if #Players:GetPlayers() <= 1 then
-            LocalPlayer:Kick("\n\n(Rejoining...)")
-            task.wait()
-            TeleportService:Teleport(game.PlaceId, LocalPlayer)
-        else
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
-        end
-    end)
-
-    -- 2. Reset Button (Center-Right)
-    local ResetButton = Instance.new("TextButton")
-    ResetButton.Name = "ResetButton"
-    ResetButton.Text = "Reset"
-    ResetButton.Size = UDim2.new(0, 80, 0, 30)
-    ResetButton.AnchorPoint = Vector2.new(0, 0.5)
-    ResetButton.Position = UDim2.new(0.5, 5, 0.5, 0)
-    ResetButton.BackgroundTransparency = 1
-    ResetButton.TextColor3 = THEME.Description
-    ResetButton.TextSize = 16
-    ResetButton.Font = Enum.Font.GothamBold
-    ResetButton.Parent = Header
-
-    local ResetStroke = Instance.new("UIStroke")
-    ResetStroke.Thickness = 0.5
-    ResetStroke.Color = Color3.fromRGB(0, 0, 0)
-    ResetStroke.Parent = ResetButton
-
-    ResetButton.MouseButton1Click:Connect(function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.Health = 0
-        end
-    end)
-
-    -- 3. Open Button (Floating Icon when Minimized)
-    local OpenButton = Instance.new("TextButton")
-    OpenButton.Name = "OpenButton"
-    OpenButton.Size = UDim2.new(0, 50, 0, 50)
-    OpenButton.Position = UDim2.new(0, 10, 0.5, -25)
-    OpenButton.BackgroundColor3 = THEME.Accent
-    OpenButton.TextColor3 = THEME.Text
-    OpenButton.Text = "Open"
-    OpenButton.Font = Enum.Font.GothamBold
-    OpenButton.TextSize = 14
-    OpenButton.Visible = false -- Hidden by default
-    OpenButton.Parent = ScreenGui
-
-    local OpenCorner = Instance.new("UICorner")
-    OpenCorner.CornerRadius = UDim.new(1, 0)
-    OpenCorner.Parent = OpenButton
-
-    OpenButton.MouseButton1Click:Connect(function()
-        MainFrame.Visible = true
-        OpenButton.Visible = false
-    end)
-
-    -- 4. Minimize Button (-)
-    local MinButton = Instance.new("TextButton")
-    MinButton.Name = "MinButton"
-    MinButton.Text = "-"
-    MinButton.Size = UDim2.new(0, 30, 0, 30)
-    MinButton.Position = UDim2.new(1, -70, 0, 5) -- Next to Close
-    MinButton.BackgroundTransparency = 1
-    MinButton.TextColor3 = THEME.Description
-    MinButton.TextSize = 24
-    MinButton.Font = Enum.Font.GothamBold
-    MinButton.Parent = Header
-
-    local MinStroke = Instance.new("UIStroke")
-    MinStroke.Thickness = 0.5
-    MinStroke.Color = Color3.fromRGB(0, 0, 0)
-    MinStroke.Parent = MinButton
-
-    MinButton.MouseButton1Click:Connect(function()
-        MainFrame.Visible = false
-        OpenButton.Visible = true
-    end)
-
-    -- 5. Close Button (X)
-    local CloseButton = Instance.new("TextButton")
-    CloseButton.Name = "CloseButton"
-    CloseButton.Text = "X"
-    CloseButton.Size = UDim2.new(0, 30, 0, 30)
-    CloseButton.Position = UDim2.new(1, -35, 0, 5)
-    CloseButton.BackgroundTransparency = 1
-    CloseButton.TextColor3 = THEME.Description
-    CloseButton.TextSize = 18
-    CloseButton.Font = Enum.Font.GothamBold
-    CloseButton.Parent = Header
-
-    local CloseStroke = Instance.new("UIStroke")
-    CloseStroke.Thickness = 0.5
-    CloseStroke.Color = Color3.fromRGB(0, 0, 0)
-    CloseStroke.Parent = CloseButton
-
-    -- [ TABS REMOVED ]
-
-    -- Content Container
-    local ContentContainer = Instance.new("Frame")
-    ContentContainer.Name = "ContentContainer"
-    ContentContainer.Size = UDim2.new(1, -20, 1, -50)
-    ContentContainer.Position = UDim2.new(0, 10, 0, 45)
-    ContentContainer.BackgroundTransparency = 1
-    ContentContainer.Parent = MainFrame
-
-    local ContentLayout = Instance.new("UIListLayout")
-    ContentLayout.FillDirection = Enum.FillDirection.Horizontal
-    ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    ContentLayout.Padding = UDim.new(0, 10)
-    ContentLayout.Parent = ContentContainer
-
-    -- [ DRAGGING LOGIC ]
-    local dragging, dragInput, dragStart, startPos
-
-    local function update(input)
-        local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-
-    Header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = MainFrame.Position
             
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
+            return false
+        end
+
+        local function handleStaffDetection(player, reason)
+            if not antiStaffEnabled or detectedStaff[player.UserId] then return end
+            detectedStaff[player.UserId] = true
+            
+            if antiStaffAutoLeave then
+                LocalPlayer:Kick("\nStaff detected: " .. player.Name .. " (" .. reason .. ")")
+            else
+                pcall(function()
+                    game:GetService("StarterGui"):SetCore("SendNotification", {
+                        Title = "!!! STAFF DETECTED !!!",
+                        Text = player.Name .. " is a " .. reason,
+                        Duration = 10,
+                        Button1 = "Leave Now"
+                    })
+                end)
+            end
+        end
+
+        local function checkPlayerStaff(player)
+            task.spawn(function()
+                local isStaff, reason = detectStaff(player)
+                if isStaff then
+                    handleStaffDetection(player, reason)
                 end
             end)
         end
-    end)
 
-    Header.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
+        Players.PlayerAdded:Connect(checkPlayerStaff)
 
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            update(input)
-        end
-    end)
+        local nameBlacklist = {
+            "npc", "hizoimviewmodel", "viewmodel", -- System
+            "adam_dgf", "victim", "decoration2", "aaaaa", "victor", -- Custom
+            "statue", "decoration", "corpse", "prop", "dummy"
+        }
 
-    -- [ UI HELPERS ]
-    local currentTab = nil
+        -- WHITELIST: NPCs that should show ESP even if Anchored (Sleeping/Ambushers)
+        local sleepingEnemies = {
+            "gilbert",
+            "lurkerrsu4",
+            "lurkerrsu5",
+            "lurkerlab",
+            "mikhail",
+            "lurkerrsu2",
+            "riserhazmat2",
+            "riserhazmat",
+            "fireriser",
+            "rif stationary",
+        }
 
-    local function createColumn(name)
-        local Column = Instance.new("Frame")
-        Column.Name = name .. "Column"
-        Column.Size = UDim2.new(0.32, 0, 1, 0) -- 3 Columns approx 33%
-        Column.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
-        Column.BorderSizePixel = 0
-        Column.Parent = ContentContainer
-        
-        local Corner = Instance.new("UICorner")
-        Corner.CornerRadius = UDim.new(0, 6)
-        Corner.Parent = Column
-        
-        -- Column Header
-        local Header = Instance.new("TextLabel")
-        Header.Text = string.upper(name)
-        Header.Size = UDim2.new(1, 0, 0, 30)
-        Header.BackgroundTransparency = 1
-        Header.TextColor3 = THEME.Accent
-        Header.Font = Enum.Font.GothamBold
-        Header.TextSize = 14
-        Header.Parent = Column
-
-    local HeaderStroke = Instance.new("UIStroke")
-    HeaderStroke.Thickness = 1
-    HeaderStroke.Color = Color3.fromRGB(0, 0, 0)
-    HeaderStroke.Transparency = 0.8
-    HeaderStroke.Parent = Header
-
-        -- Scroll Area
-        local Page = Instance.new("ScrollingFrame")
-        Page.Name = "Page"
-        Page.Size = UDim2.new(1, 0, 1, -35)
-        Page.Position = UDim2.new(0, 0, 0, 35)
-        Page.BackgroundTransparency = 1
-        Page.BorderSizePixel = 0
-        Page.ScrollBarThickness = 2
-        Page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        Page.CanvasSize = UDim2.new(0, 0, 0, 0)
-        Page.Parent = Column
-        
-        local UIList = Instance.new("UIListLayout")
-        UIList.Padding = UDim.new(0, 8)
-        UIList.SortOrder = Enum.SortOrder.LayoutOrder
-        UIList.Parent = Page
-        
-        local UIPad = Instance.new("UIPadding")
-        UIPad.PaddingLeft = UDim.new(0, 5)
-        UIPad.PaddingRight = UDim.new(0, 5)
-        UIPad.PaddingBottom = UDim.new(0, 5)
-        UIPad.Parent = Page
-        
-        return Page
-    end
-
-    local function createToggle(page, text, default, callback)
-        local Frame = Instance.new("Frame")
-        Frame.Size = UDim2.new(1, 0, 0, 40)
-        Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-        Frame.BorderSizePixel = 0
-        Frame.Parent = page
-        
-        local UICorner = Instance.new("UICorner")
-        UICorner.CornerRadius = UDim.new(0, 6)
-        UICorner.Parent = Frame
-        
-        local Label = Instance.new("TextLabel")
-        Label.Text = text
-        Label.Size = UDim2.new(1, -60, 1, 0)
-        Label.Position = UDim2.new(0, 10, 0, 0)
-        Label.BackgroundTransparency = 1
-        Label.TextColor3 = THEME.Text
-        Label.Font = Enum.Font.Gotham
-        Label.TextSize = 14
-        Label.TextXAlignment = Enum.TextXAlignment.Left
-        Label.Parent = Frame
-
-        local LabelStroke = Instance.new("UIStroke")
-        LabelStroke.Thickness = 0.5
-        LabelStroke.Color = Color3.fromRGB(0, 0, 0)
-        LabelStroke.Transparency = 0.7
-        LabelStroke.Parent = Label
-        
-        local Button = Instance.new("TextButton")
-        Button.Text = ""
-        Button.Size = UDim2.new(0, 40, 0, 20)
-        Button.Position = UDim2.new(1, -50, 0.5, -10)
-        Button.BackgroundColor3 = default and THEME.Accent or Color3.fromRGB(60, 60, 60)
-        Button.Parent = Frame
-        
-        local ButtonCorner = Instance.new("UICorner")
-        ButtonCorner.CornerRadius = UDim.new(1, 0)
-        ButtonCorner.Parent = Button
-
-        local Circle = Instance.new("Frame")
-        Circle.Size = UDim2.new(0, 16, 0, 16)
-        Circle.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-        Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        Circle.Parent = Button
-        
-        local CircleCorner = Instance.new("UICorner")
-        CircleCorner.CornerRadius = UDim.new(1, 0)
-        CircleCorner.Parent = Circle
-        
-        local toggled = default
-        
-        Button.MouseButton1Click:Connect(function()
-            toggled = not toggled
-            if toggled then
-                Button.BackgroundColor3 = THEME.Accent
-                Circle.Position = UDim2.new(1, -18, 0.5, -8)
-            else
-                Button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                Circle.Position = UDim2.new(0, 2, 0.5, -8)
+        local function isNPCBlacklisted(name)
+            if not name then return false end
+            local n = string.lower(name)
+            for _, pattern in ipairs(nameBlacklist) do
+                if string.find(n, pattern) then return true end
             end
+            return false
+        end
+
+        -- [ UI CONFIGURATION ]
+        local RESX, RESY = 900, 300 -- Compact Height for 3 columns
+        local THEME = {
+            Background = Color3.fromRGB(30, 30, 35),
+            Header = Color3.fromRGB(25, 25, 30),
+            Accent = Color3.fromRGB(0, 120, 215),
+            Text = Color3.fromRGB(240, 240, 240),
+            Description = Color3.fromRGB(180, 180, 180)
+        }
+
+        -- [ STARTUP CLEANUP ]
+        if CoreGui:FindFirstChild("ExaminationGUI") then CoreGui.ExaminationGUI:Destroy() end
+        if LocalPlayer.PlayerGui:FindFirstChild("ExaminationGUI") then LocalPlayer.PlayerGui.ExaminationGUI:Destroy() end
+        if CoreGui:FindFirstChild("ExaminationESP") then CoreGui.ExaminationESP:Destroy() end
+        if CoreGui:FindFirstChild("InfectESP") then CoreGui.InfectESP:Destroy() end
+        if CoreGui:FindFirstChild("AmmoESP") then CoreGui.AmmoESP:Destroy() end
+
+        -- [ MAIN UI CREATION ]
+        local ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "ExaminationGUI"
+        ScreenGui.ResetOnSpawn = false
+
+        -- Security Fallback
+        if pcall(function() ScreenGui.Parent = CoreGui end) then
+            -- Parented to CoreGui
+        else
+            ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        end
+
+        -- > Main Frame
+        local MainFrame = Instance.new("Frame")
+        MainFrame.Name = "MainFrame"
+        MainFrame.Size = UDim2.new(0, RESX, 0, RESY)
+        MainFrame.Position = UDim2.new(0.5, -RESX/2, 0.5, -RESY/2)
+        MainFrame.BackgroundColor3 = THEME.Background
+        MainFrame.BorderSizePixel = 0
+        MainFrame.Visible = true
+        MainFrame.Parent = ScreenGui
+
+        local UICorner = Instance.new("UICorner")
+        UICorner.CornerRadius = UDim.new(0, 8)
+        UICorner.Parent = MainFrame
+
+        -- Modal Fix (Force mouse unlock when GUI is visible)
+        local ModalFix = Instance.new("TextButton")
+        ModalFix.Name = "ModalFix"
+        ModalFix.Size = UDim2.new(0, 0, 0, 0)
+        ModalFix.BackgroundTransparency = 1
+        ModalFix.Text = ""
+        ModalFix.Modal = true
+        ModalFix.Parent = MainFrame
+
+        -- > Header
+        local Header = Instance.new("Frame")
+        Header.Name = "Header"
+        Header.Size = UDim2.new(1, 0, 0, 40)
+        Header.BackgroundColor3 = THEME.Header
+        Header.BorderSizePixel = 0
+        Header.Parent = MainFrame
+
+        local HeaderCorner = Instance.new("UICorner")
+        HeaderCorner.CornerRadius = UDim.new(0, 8)
+        HeaderCorner.Parent = Header
+
+        -- Header Cover (Square bottom corners)
+        local HeaderCover = Instance.new("Frame")
+        HeaderCover.Size = UDim2.new(1, 0, 0, 10)
+        HeaderCover.Position = UDim2.new(0, 0, 1, -10)
+        HeaderCover.BackgroundColor3 = THEME.Header
+        HeaderCover.BorderSizePixel = 0
+        HeaderCover.Parent = Header
+
+        -- Title
+        local Title = Instance.new("TextLabel")
+        Title.Name = "Title"
+        Title.Text = "Examination GUI"
+        Title.Font = Enum.Font.GothamBold
+        Title.TextSize = 18
+        Title.TextColor3 = THEME.Text
+        Title.Size = UDim2.new(1, -20, 1, 0)
+        Title.Position = UDim2.new(0, 10, 0, 0)
+        Title.BackgroundTransparency = 1
+        Title.TextXAlignment = Enum.TextXAlignment.Left
+        Title.Parent = Header
+
+        local TitleStroke = Instance.new("UIStroke")
+        TitleStroke.Thickness = 1.2
+        TitleStroke.Color = Color3.fromRGB(0, 0, 0)
+        TitleStroke.Transparency = 0.5
+        TitleStroke.Parent = Title
+
+        -- [ HEADER BUTTONS ]
+
+        -- 1. Rejoin Button (Center-Left)
+        local RejoinButton = Instance.new("TextButton")
+        RejoinButton.Name = "RejoinButton"
+        RejoinButton.Text = "Rejoin"
+        RejoinButton.Size = UDim2.new(0, 80, 0, 30)
+        RejoinButton.AnchorPoint = Vector2.new(1, 0.5)
+        RejoinButton.Position = UDim2.new(0.5, -5, 0.5, 0)
+        RejoinButton.BackgroundTransparency = 1
+        RejoinButton.TextColor3 = THEME.Description
+        RejoinButton.Font = Enum.Font.GothamBold
+        RejoinButton.TextSize = 16
+        RejoinButton.Parent = Header
+
+        local RejoinStroke = Instance.new("UIStroke")
+        RejoinStroke.Thickness = 0.5
+        RejoinStroke.Color = Color3.fromRGB(0, 0, 0)
+        RejoinStroke.Parent = RejoinButton
+
+        RejoinButton.MouseButton1Click:Connect(function()
+            if #Players:GetPlayers() <= 1 then
+                LocalPlayer:Kick("\n\n(Rejoining...)")
+                task.wait()
+                TeleportService:Teleport(game.PlaceId, LocalPlayer)
+            else
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+            end
+        end)
+
+        -- 2. Reset Button (Center-Right)
+        local ResetButton = Instance.new("TextButton")
+        ResetButton.Name = "ResetButton"
+        ResetButton.Text = "Reset"
+        ResetButton.Size = UDim2.new(0, 80, 0, 30)
+        ResetButton.AnchorPoint = Vector2.new(0, 0.5)
+        ResetButton.Position = UDim2.new(0.5, 5, 0.5, 0)
+        ResetButton.BackgroundTransparency = 1
+        ResetButton.TextColor3 = THEME.Description
+        ResetButton.TextSize = 16
+        ResetButton.Font = Enum.Font.GothamBold
+        ResetButton.Parent = Header
+
+        local ResetStroke = Instance.new("UIStroke")
+        ResetStroke.Thickness = 0.5
+        ResetStroke.Color = Color3.fromRGB(0, 0, 0)
+        ResetStroke.Parent = ResetButton
+
+        ResetButton.MouseButton1Click:Connect(function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                LocalPlayer.Character.Humanoid.Health = 0
+            end
+        end)
+
+        -- 3. Open Button (Floating Icon when Minimized)
+        local OpenButton = Instance.new("TextButton")
+        OpenButton.Name = "OpenButton"
+        OpenButton.Size = UDim2.new(0, 50, 0, 50)
+        OpenButton.Position = UDim2.new(0, 10, 0.5, -25)
+        OpenButton.BackgroundColor3 = THEME.Accent
+        OpenButton.TextColor3 = THEME.Text
+        OpenButton.Text = "Open"
+        OpenButton.Font = Enum.Font.GothamBold
+        OpenButton.TextSize = 14
+        OpenButton.Visible = false -- Hidden by default
+        OpenButton.Parent = ScreenGui
+
+        local OpenCorner = Instance.new("UICorner")
+        OpenCorner.CornerRadius = UDim.new(1, 0)
+        OpenCorner.Parent = OpenButton
+
+        OpenButton.MouseButton1Click:Connect(function()
+            MainFrame.Visible = true
+            OpenButton.Visible = false
+        end)
+
+        -- 4. Minimize Button (-)
+        local MinButton = Instance.new("TextButton")
+        MinButton.Name = "MinButton"
+        MinButton.Text = "-"
+        MinButton.Size = UDim2.new(0, 30, 0, 30)
+        MinButton.Position = UDim2.new(1, -70, 0, 5) -- Next to Close
+        MinButton.BackgroundTransparency = 1
+        MinButton.TextColor3 = THEME.Description
+        MinButton.TextSize = 24
+        MinButton.Font = Enum.Font.GothamBold
+        MinButton.Parent = Header
+
+        local MinStroke = Instance.new("UIStroke")
+        MinStroke.Thickness = 0.5
+        MinStroke.Color = Color3.fromRGB(0, 0, 0)
+        MinStroke.Parent = MinButton
+
+        MinButton.MouseButton1Click:Connect(function()
+            MainFrame.Visible = false
+            OpenButton.Visible = true
+        end)
+
+        -- 5. Close Button (X)
+        local CloseButton = Instance.new("TextButton")
+        CloseButton.Name = "CloseButton"
+        CloseButton.Text = "X"
+        CloseButton.Size = UDim2.new(0, 30, 0, 30)
+        CloseButton.Position = UDim2.new(1, -35, 0, 5)
+        CloseButton.BackgroundTransparency = 1
+        CloseButton.TextColor3 = THEME.Description
+        CloseButton.TextSize = 18
+        CloseButton.Font = Enum.Font.GothamBold
+        CloseButton.Parent = Header
+
+        local CloseStroke = Instance.new("UIStroke")
+        CloseStroke.Thickness = 0.5
+        CloseStroke.Color = Color3.fromRGB(0, 0, 0)
+        CloseStroke.Parent = CloseButton
+
+        -- [ TABS REMOVED ]
+
+        -- Content Container
+        local ContentContainer = Instance.new("Frame")
+        ContentContainer.Name = "ContentContainer"
+        ContentContainer.Size = UDim2.new(1, -20, 1, -50)
+        ContentContainer.Position = UDim2.new(0, 10, 0, 45)
+        ContentContainer.BackgroundTransparency = 1
+        ContentContainer.Parent = MainFrame
+
+        local ContentLayout = Instance.new("UIListLayout")
+        ContentLayout.FillDirection = Enum.FillDirection.Horizontal
+        ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        ContentLayout.Padding = UDim.new(0, 10)
+        ContentLayout.Parent = ContentContainer
+
+        -- [ DRAGGING LOGIC ]
+        local dragging, dragInput, dragStart, startPos
+
+        local function update(input)
+            local delta = input.Position - dragStart
+            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+
+        Header.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragStart = input.Position
+                startPos = MainFrame.Position
+                
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                    end
+                end)
+            end
+        end)
+
+        Header.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                dragInput = input
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if input == dragInput and dragging then
+                update(input)
+            end
+        end)
+
+        -- [ UI HELPERS ]
+        local currentTab = nil
+
+        local function createColumn(name)
+            local Column = Instance.new("Frame")
+            Column.Name = name .. "Column"
+            Column.Size = UDim2.new(0.32, 0, 1, 0) -- 3 Columns approx 33%
+            Column.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+            Column.BorderSizePixel = 0
+            Column.Parent = ContentContainer
+            
+            local Corner = Instance.new("UICorner")
+            Corner.CornerRadius = UDim.new(0, 6)
+            Corner.Parent = Column
+            
+            -- Column Header
+            local Header = Instance.new("TextLabel")
+            Header.Text = string.upper(name)
+            Header.Size = UDim2.new(1, 0, 0, 30)
+            Header.BackgroundTransparency = 1
+            Header.TextColor3 = THEME.Accent
+            Header.Font = Enum.Font.GothamBold
+            Header.TextSize = 14
+            Header.Parent = Column
+
+        local HeaderStroke = Instance.new("UIStroke")
+        HeaderStroke.Thickness = 1
+        HeaderStroke.Color = Color3.fromRGB(0, 0, 0)
+        HeaderStroke.Transparency = 0.8
+        HeaderStroke.Parent = Header
+
+            -- Scroll Area
+            local Page = Instance.new("ScrollingFrame")
+            Page.Name = "Page"
+            Page.Size = UDim2.new(1, 0, 1, -35)
+            Page.Position = UDim2.new(0, 0, 0, 35)
+            Page.BackgroundTransparency = 1
+            Page.BorderSizePixel = 0
+            Page.ScrollBarThickness = 2
+            Page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+            Page.CanvasSize = UDim2.new(0, 0, 0, 0)
+            Page.Parent = Column
+            
+            local UIList = Instance.new("UIListLayout")
+            UIList.Padding = UDim.new(0, 8)
+            UIList.SortOrder = Enum.SortOrder.LayoutOrder
+            UIList.Parent = Page
+            
+            local UIPad = Instance.new("UIPadding")
+            UIPad.PaddingLeft = UDim.new(0, 5)
+            UIPad.PaddingRight = UDim.new(0, 5)
+            UIPad.PaddingBottom = UDim.new(0, 5)
+            UIPad.Parent = Page
+            
+            return Page
+        end
+
+        local function createToggle(page, text, default, callback)
+            local Frame = Instance.new("Frame")
+            Frame.Size = UDim2.new(1, 0, 0, 40)
+            Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+            Frame.BorderSizePixel = 0
+            Frame.Parent = page
+            
+            local UICorner = Instance.new("UICorner")
+            UICorner.CornerRadius = UDim.new(0, 6)
+            UICorner.Parent = Frame
+            
+            local Label = Instance.new("TextLabel")
+            Label.Text = text
+            Label.Size = UDim2.new(1, -60, 1, 0)
+            Label.Position = UDim2.new(0, 10, 0, 0)
+            Label.BackgroundTransparency = 1
+            Label.TextColor3 = THEME.Text
+            Label.Font = Enum.Font.Gotham
+            Label.TextSize = 14
+            Label.TextXAlignment = Enum.TextXAlignment.Left
+            Label.Parent = Frame
+
+            local LabelStroke = Instance.new("UIStroke")
+            LabelStroke.Thickness = 0.5
+            LabelStroke.Color = Color3.fromRGB(0, 0, 0)
+            LabelStroke.Transparency = 0.7
+            LabelStroke.Parent = Label
+            
+            local Button = Instance.new("TextButton")
+            Button.Text = ""
+            Button.Size = UDim2.new(0, 40, 0, 20)
+            Button.Position = UDim2.new(1, -50, 0.5, -10)
+            Button.BackgroundColor3 = default and THEME.Accent or Color3.fromRGB(60, 60, 60)
+            Button.Parent = Frame
+            
+            local ButtonCorner = Instance.new("UICorner")
+            ButtonCorner.CornerRadius = UDim.new(1, 0)
+            ButtonCorner.Parent = Button
+
+            local Circle = Instance.new("Frame")
+            Circle.Size = UDim2.new(0, 16, 0, 16)
+            Circle.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+            Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            Circle.Parent = Button
+            
+            local CircleCorner = Instance.new("UICorner")
+            CircleCorner.CornerRadius = UDim.new(1, 0)
+            CircleCorner.Parent = Circle
+            
+            local toggled = default
+            
+            Button.MouseButton1Click:Connect(function()
+                toggled = not toggled
+                if toggled then
+                    Button.BackgroundColor3 = THEME.Accent
+                    Circle.Position = UDim2.new(1, -18, 0.5, -8)
+                else
+                    Button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                    Circle.Position = UDim2.new(0, 2, 0.5, -8)
+                end
+                callback(toggled)
+            end)
+            
+            -- TRIGGER INITIAL STATE
             callback(toggled)
-        end)
-        
-        -- TRIGGER INITIAL STATE
-        callback(toggled)
-    end
-
-    local function createToggleInput(page, text, defaultVal, defaultToggle, callback)
-        local Frame = Instance.new("Frame")
-        Frame.Size = UDim2.new(1, 0, 0, 40)
-        Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-        Frame.BorderSizePixel = 0
-        Frame.Parent = page
-        
-        local UICorner = Instance.new("UICorner")
-        UICorner.CornerRadius = UDim.new(0, 6)
-        UICorner.Parent = Frame
-        
-        local Label = Instance.new("TextLabel")
-        Label.Text = text
-        Label.Size = UDim2.new(1, -110, 1, 0)
-        Label.Position = UDim2.new(0, 10, 0, 0)
-        Label.BackgroundTransparency = 1
-        Label.TextColor3 = THEME.Text
-        Label.Font = Enum.Font.Gotham
-        Label.TextSize = 14
-        Label.TextXAlignment = Enum.TextXAlignment.Left
-        Label.Parent = Frame
-
-        local LabelStroke = Instance.new("UIStroke")
-        LabelStroke.Thickness = 0.5
-        LabelStroke.Color = Color3.fromRGB(0, 0, 0)
-        LabelStroke.Transparency = 0.7
-        LabelStroke.Parent = Label
-        
-        -- Toggle Button
-        local ToggleButton = Instance.new("TextButton")
-        ToggleButton.Text = ""
-        ToggleButton.Size = UDim2.new(0, 40, 0, 20)
-        ToggleButton.Position = UDim2.new(1, -110, 0.5, -10)
-        ToggleButton.BackgroundColor3 = defaultToggle and THEME.Accent or Color3.fromRGB(60, 60, 60)
-        ToggleButton.Parent = Frame
-        
-        local ToggleCorner = Instance.new("UICorner")
-        ToggleCorner.CornerRadius = UDim.new(1, 0)
-        ToggleCorner.Parent = ToggleButton
-
-        local Circle = Instance.new("Frame")
-        Circle.Size = UDim2.new(0, 16, 0, 16)
-        Circle.Position = defaultToggle and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-        Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        Circle.Parent = ToggleButton
-        
-        local CircleCorner = Instance.new("UICorner")
-        CircleCorner.CornerRadius = UDim.new(1, 0)
-        CircleCorner.Parent = Circle
-        
-        -- Input Box
-        local InputBox = Instance.new("TextBox")
-        InputBox.Text = tostring(defaultVal)
-        InputBox.Size = UDim2.new(0, 60, 0, 24)
-        InputBox.Position = UDim2.new(1, -65, 0.5, -12)
-        InputBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        InputBox.TextColor3 = THEME.Text
-        InputBox.Font = Enum.Font.Gotham
-        InputBox.TextSize = 14
-        InputBox.Parent = Frame
-
-        local BoxStroke = Instance.new("UIStroke")
-        BoxStroke.Thickness = 1
-        BoxStroke.Color = Color3.fromRGB(60, 60, 60)
-        BoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        BoxStroke.Parent = InputBox
-        
-        local BoxCorner = Instance.new("UICorner")
-        BoxCorner.CornerRadius = UDim.new(0, 4)
-        BoxCorner.Parent = InputBox
-        
-        -- Logic
-        local isToggled = defaultToggle
-        local currentVal = tonumber(defaultVal) or 0
-        
-        local function trigger()
-            currentVal = tonumber(InputBox.Text) or currentVal
-            callback(currentVal, isToggled)
         end
-        
-        ToggleButton.MouseButton1Click:Connect(function()
-            isToggled = not isToggled
-            if isToggled then
-                ToggleButton.BackgroundColor3 = THEME.Accent
-                Circle.Position = UDim2.new(1, -18, 0.5, -8)
-            else
-                ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                Circle.Position = UDim2.new(0, 2, 0.5, -8)
+
+        local function createToggleInput(page, text, defaultVal, defaultToggle, callback)
+            local Frame = Instance.new("Frame")
+            Frame.Size = UDim2.new(1, 0, 0, 40)
+            Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+            Frame.BorderSizePixel = 0
+            Frame.Parent = page
+            
+            local UICorner = Instance.new("UICorner")
+            UICorner.CornerRadius = UDim.new(0, 6)
+            UICorner.Parent = Frame
+            
+            local Label = Instance.new("TextLabel")
+            Label.Text = text
+            Label.Size = UDim2.new(1, -110, 1, 0)
+            Label.Position = UDim2.new(0, 10, 0, 0)
+            Label.BackgroundTransparency = 1
+            Label.TextColor3 = THEME.Text
+            Label.Font = Enum.Font.Gotham
+            Label.TextSize = 14
+            Label.TextXAlignment = Enum.TextXAlignment.Left
+            Label.Parent = Frame
+
+            local LabelStroke = Instance.new("UIStroke")
+            LabelStroke.Thickness = 0.5
+            LabelStroke.Color = Color3.fromRGB(0, 0, 0)
+            LabelStroke.Transparency = 0.7
+            LabelStroke.Parent = Label
+            
+            -- Toggle Button
+            local ToggleButton = Instance.new("TextButton")
+            ToggleButton.Text = ""
+            ToggleButton.Size = UDim2.new(0, 40, 0, 20)
+            ToggleButton.Position = UDim2.new(1, -110, 0.5, -10)
+            ToggleButton.BackgroundColor3 = defaultToggle and THEME.Accent or Color3.fromRGB(60, 60, 60)
+            ToggleButton.Parent = Frame
+            
+            local ToggleCorner = Instance.new("UICorner")
+            ToggleCorner.CornerRadius = UDim.new(1, 0)
+            ToggleCorner.Parent = ToggleButton
+
+            local Circle = Instance.new("Frame")
+            Circle.Size = UDim2.new(0, 16, 0, 16)
+            Circle.Position = defaultToggle and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+            Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            Circle.Parent = ToggleButton
+            
+            local CircleCorner = Instance.new("UICorner")
+            CircleCorner.CornerRadius = UDim.new(1, 0)
+            CircleCorner.Parent = Circle
+            
+            -- Input Box
+            local InputBox = Instance.new("TextBox")
+            InputBox.Text = tostring(defaultVal)
+            InputBox.Size = UDim2.new(0, 60, 0, 24)
+            InputBox.Position = UDim2.new(1, -65, 0.5, -12)
+            InputBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+            InputBox.TextColor3 = THEME.Text
+            InputBox.Font = Enum.Font.Gotham
+            InputBox.TextSize = 14
+            InputBox.Parent = Frame
+
+            local BoxStroke = Instance.new("UIStroke")
+            BoxStroke.Thickness = 1
+            BoxStroke.Color = Color3.fromRGB(60, 60, 60)
+            BoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            BoxStroke.Parent = InputBox
+            
+            local BoxCorner = Instance.new("UICorner")
+            BoxCorner.CornerRadius = UDim.new(0, 4)
+            BoxCorner.Parent = InputBox
+            
+            -- Logic
+            local isToggled = defaultToggle
+            local currentVal = tonumber(defaultVal) or 0
+            
+            local function trigger()
+                currentVal = tonumber(InputBox.Text) or currentVal
+                callback(currentVal, isToggled)
             end
-            trigger()
-        end)
-        
-        InputBox.FocusLost:Connect(function()
-            local n = tonumber(InputBox.Text)
-            if n then
-                currentVal = n
-                trigger()
-            else
-                InputBox.Text = tostring(currentVal)
-            end
-        end)
-        
-        local function set(val, toggle)
-            if val ~= nil then
-                currentVal = val
-                InputBox.Text = tostring(val)
-            end
-            if toggle ~= nil then
-                isToggled = toggle
+            
+            ToggleButton.MouseButton1Click:Connect(function()
+                isToggled = not isToggled
                 if isToggled then
                     ToggleButton.BackgroundColor3 = THEME.Accent
                     Circle.Position = UDim2.new(1, -18, 0.5, -8)
@@ -604,180 +598,1288 @@
                     ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
                     Circle.Position = UDim2.new(0, 2, 0.5, -8)
                 end
-            end
-            trigger()
-        end
-        
-        return set
-    end
-
-    -- [ COLUMNS & LOGIC ]
-    local LocalTab = createColumn("Players")
-    local CombatTab = createColumn("Combat")
-    local VisualsTab = createColumn("Visuals")
-
-    -- ====================
-    -- CATEGORY: LOCAL PLAYER
-    -- ====================
-
-    -- 1. WalkSpeed
-    local wsConnection = nil
-    createToggleInput(LocalTab, "WalkSpeed", 24, false, function(val, state)
-        if wsConnection then wsConnection:Disconnect() wsConnection = nil end
-        
-        if state then
-            walkSpeed = tonumber(val) or 24
+                trigger()
+            end)
             
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed
-            end
-            
-            wsConnection = RunService.RenderStepped:Connect(function()
-                if not ScreenGui.Parent then 
-                    if wsConnection then wsConnection:Disconnect() end
-                    return
+            InputBox.FocusLost:Connect(function()
+                local n = tonumber(InputBox.Text)
+                if n then
+                    currentVal = n
+                    trigger()
+                else
+                    InputBox.Text = tostring(currentVal)
                 end
-                
-                if not flyEnabled and LocalPlayer.Character then
-                    local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
-                    if hum and hum.WalkSpeed ~= walkSpeed then
-                        hum.WalkSpeed = walkSpeed
+            end)
+            
+            local function set(val, toggle)
+                if val ~= nil then
+                    currentVal = val
+                    InputBox.Text = tostring(val)
+                end
+                if toggle ~= nil then
+                    isToggled = toggle
+                    if isToggled then
+                        ToggleButton.BackgroundColor3 = THEME.Accent
+                        Circle.Position = UDim2.new(1, -18, 0.5, -8)
+                    else
+                        ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+                        Circle.Position = UDim2.new(0, 2, 0.5, -8)
                     end
                 end
-            end)
-        else
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                LocalPlayer.Character.Humanoid.WalkSpeed = 16
+                trigger()
             end
+            
+            return set
         end
-    end)
 
-    -- 2. Fly System
-    flySpeed = 50
-    flyBodyGyro, flyBodyVelocity = nil, nil
+        -- [ COLUMNS & LOGIC ]
+        local LocalTab = createColumn("Players")
+        local CombatTab = createColumn("Combat")
+        local VisualsTab = createColumn("Visuals")
 
-    local function stopFly()
-        if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
-        if flyBodyVelocity then flyBodyVelocity:Destroy() flyBodyVelocity = nil end
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.PlatformStand = false
-            LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed -- Restore Speed
-        end
-    end
+        -- ====================
+        -- CATEGORY: LOCAL PLAYER
+        -- ====================
 
-    local function startFly()
-        local char = LocalPlayer.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-        
-        local hrp = char.HumanoidRootPart
-        local humanoid = char:FindFirstChild("Humanoid")
-        
-        if flyBodyGyro or flyBodyVelocity then return end
-        
-        flyBodyGyro = Instance.new("BodyGyro")
-        flyBodyGyro.P = 9e4
-        flyBodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
-        flyBodyGyro.cframe = hrp.CFrame
-        flyBodyGyro.Parent = hrp
-        
-        flyBodyVelocity = Instance.new("BodyVelocity")
-        flyBodyVelocity.velocity = Vector3.new(0,0.1,0)
-        flyBodyVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
-        flyBodyVelocity.Parent = hrp
-        
-        humanoid.PlatformStand = true
-        humanoid.WalkSpeed = 16 -- Reset to default to prevent Camera Tilt from game scripts
-        
-        task.spawn(function()
-            while flyEnabled and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 do
-                if not ScreenGui.Parent then stopFly() break end
-                if not flyBodyGyro or not flyBodyGyro.Parent then break end
+        -- 1. WalkSpeed
+        local wsConnection = nil
+        createToggleInput(LocalTab, "WalkSpeed", 24, false, function(val, state)
+            if wsConnection then wsConnection:Disconnect() wsConnection = nil end
+            
+            if state then
+                walkSpeed = tonumber(val) or 24
                 
-                -- Lock Gyro to Camera LookVector but Keep Upright (Removes Tilt/Roll)
-                flyBodyGyro.cframe = CFrame.lookAt(hrp.Position, hrp.Position + Camera.CFrame.LookVector)
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                    LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed
+                end
                 
-                local vel = Vector3.new()
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + Camera.CFrame.LookVector * flySpeed end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then vel = vel - Camera.CFrame.LookVector * flySpeed end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then vel = vel + Camera.CFrame.RightVector * flySpeed end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then vel = vel - Camera.CFrame.RightVector * flySpeed end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0, 1, 0) * flySpeed end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then vel = vel - Vector3.new(0, 1, 0) * flySpeed end
-                
-                flyBodyVelocity.velocity = vel
-                RunService.RenderStepped:Wait()
+                wsConnection = RunService.RenderStepped:Connect(function()
+                    if not ScreenGui.Parent then 
+                        if wsConnection then wsConnection:Disconnect() end
+                        return
+                    end
+                    
+                    if not flyEnabled and LocalPlayer.Character then
+                        local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+                        if hum and hum.WalkSpeed ~= walkSpeed then
+                            hum.WalkSpeed = walkSpeed
+                        end
+                    end
+                end)
+            else
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                    LocalPlayer.Character.Humanoid.WalkSpeed = 16
+                end
             end
         end)
-    end
 
-    local toggleFly = createToggleInput(LocalTab, "Fly Mode (F)", 50, false, function(val, state)
-        flySpeed = val
-        flyEnabled = state
-        if flyEnabled then startFly() else stopFly() end
-    end)
+        -- 2. Fly System
+        flySpeed = 50
+        flyBodyGyro, flyBodyVelocity = nil, nil
 
-    -- Keybind for Fly (F)
-    UserInputService.InputBegan:Connect(function(input, gpe)
-        if gpe then return end
-        if input.KeyCode == Enum.KeyCode.F then
-            toggleFly(nil, not flyEnabled)
-        end
-    end)
-
-    -- 3. FullBright
-    local fullBrightConnection = nil
-    createToggle(VisualsTab, "FullBright", false, function(state)
-        if state then
-            fullBrightConnection = RunService.RenderStepped:Connect(function()
-                if not ScreenGui.Parent then
-                    if fullBrightConnection then fullBrightConnection:Disconnect() end
-                    return
-                end
-                Lighting.Brightness = 2
-                Lighting.ClockTime = 14
-                Lighting.FogEnd = 100000
-                Lighting.GlobalShadows = false
-                Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-            end)
-        else
-            if fullBrightConnection then
-                fullBrightConnection:Disconnect()
-                fullBrightConnection = nil
-                Lighting.Brightness = 1
-                Lighting.GlobalShadows = true
+        local function stopFly()
+            if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
+            if flyBodyVelocity then flyBodyVelocity:Destroy() flyBodyVelocity = nil end
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                LocalPlayer.Character.Humanoid.PlatformStand = false
+                LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeed -- Restore Speed
             end
         end
-    end)
 
-    -- 4. Noclip (Walk Through Walls)
-    local noclipConnection = nil
-    createToggle(LocalTab, "Noclip", false, function(state)
-        if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
-        
-        if state then
-            noclipConnection = RunService.Stepped:Connect(function()
-                if not ScreenGui.Parent then -- Suicide check
-                    if noclipConnection then noclipConnection:Disconnect() end
-                    return
+        local function startFly()
+            local char = LocalPlayer.Character
+            if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+            
+            local hrp = char.HumanoidRootPart
+            local humanoid = char:FindFirstChild("Humanoid")
+            
+            if flyBodyGyro or flyBodyVelocity then return end
+            
+            flyBodyGyro = Instance.new("BodyGyro")
+            flyBodyGyro.P = 9e4
+            flyBodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+            flyBodyGyro.cframe = hrp.CFrame
+            flyBodyGyro.Parent = hrp
+            
+            flyBodyVelocity = Instance.new("BodyVelocity")
+            flyBodyVelocity.velocity = Vector3.new(0,0.1,0)
+            flyBodyVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
+            flyBodyVelocity.Parent = hrp
+            
+            humanoid.PlatformStand = true
+            humanoid.WalkSpeed = 16 -- Reset to default to prevent Camera Tilt from game scripts
+            
+            task.spawn(function()
+                while flyEnabled and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 do
+                    if not ScreenGui.Parent then stopFly() break end
+                    if not flyBodyGyro or not flyBodyGyro.Parent then break end
+                    
+                    -- Lock Gyro to Camera LookVector but Keep Upright (Removes Tilt/Roll)
+                    flyBodyGyro.cframe = CFrame.lookAt(hrp.Position, hrp.Position + Camera.CFrame.LookVector)
+                    
+                    local vel = Vector3.new()
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + Camera.CFrame.LookVector * flySpeed end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then vel = vel - Camera.CFrame.LookVector * flySpeed end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then vel = vel + Camera.CFrame.RightVector * flySpeed end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then vel = vel - Camera.CFrame.RightVector * flySpeed end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0, 1, 0) * flySpeed end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then vel = vel - Vector3.new(0, 1, 0) * flySpeed end
+                    
+                    flyBodyVelocity.velocity = vel
+                    RunService.RenderStepped:Wait()
                 end
-                
+            end)
+        end
+
+        local toggleFly = createToggleInput(LocalTab, "Fly Mode (F)", 50, false, function(val, state)
+            flySpeed = val
+            flyEnabled = state
+            if flyEnabled then startFly() else stopFly() end
+        end)
+
+        -- Keybind for Fly (F)
+        UserInputService.InputBegan:Connect(function(input, gpe)
+            if gpe then return end
+            if input.KeyCode == Enum.KeyCode.F then
+                toggleFly(nil, not flyEnabled)
+            end
+        end)
+
+        -- 3. FullBright
+        local fullBrightConnection = nil
+        createToggle(VisualsTab, "FullBright", false, function(state)
+            if state then
+                fullBrightConnection = RunService.RenderStepped:Connect(function()
+                    if not ScreenGui.Parent then
+                        if fullBrightConnection then fullBrightConnection:Disconnect() end
+                        return
+                    end
+                    Lighting.Brightness = 2
+                    Lighting.ClockTime = 14
+                    Lighting.FogEnd = 100000
+                    Lighting.GlobalShadows = false
+                    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+                end)
+            else
+                if fullBrightConnection then
+                    fullBrightConnection:Disconnect()
+                    fullBrightConnection = nil
+                    Lighting.Brightness = 1
+                    Lighting.GlobalShadows = true
+                end
+            end
+        end)
+
+        -- 4. Noclip (Walk Through Walls)
+        local noclipConnection = nil
+        createToggle(LocalTab, "Noclip", false, function(state)
+            if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
+            
+            if state then
+                noclipConnection = RunService.Stepped:Connect(function()
+                    if not ScreenGui.Parent then -- Suicide check
+                        if noclipConnection then noclipConnection:Disconnect() end
+                        return
+                    end
+                    
+                    local char = LocalPlayer.Character
+                    if char then
+                        for _, part in ipairs(char:GetDescendants()) do
+                            if part:IsA("BasePart") and part.CanCollide then
+                                part.CanCollide = false
+                            end
+                        end
+                    end
+                end)
+            else
+                -- RESET COLLISIONS IMMEDIATELY
                 local char = LocalPlayer.Character
                 if char then
                     for _, part in ipairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") and part.CanCollide then
-                            part.CanCollide = false
+                        if part:IsA("BasePart") then
+                            -- WHITELIST: Only restore collision for CORE parts
+                            -- Restoring collision on limbs (Arms/Legs) causes FLING due to self-collision
+                            local restoreList = {
+                                ["Head"] = true,
+                                ["HumanoidRootPart"] = true,
+                                ["Torso"] = true,
+                                ["UpperTorso"] = true,
+                                ["LowerTorso"] = true
+                            }
+                            if restoreList[part.Name] then
+                                part.CanCollide = true
+                            end
                         end
                     end
                 end
-            end)
-        else
-            -- RESET COLLISIONS IMMEDIATELY
-            local char = LocalPlayer.Character
+            end
+        end)
+
+        -- ====================
+        -- CATEGORY: COMBAT
+        -- ====================
+
+        local aimEnabled = false
+        local aimKey = Enum.UserInputType.MouseButton2
+        local aimFOV = 200
+        local aimSmoothness = 0.25 -- Lower = Smoother, Higher = Snappier (Tuned to reduce jitter)
+        local aimRightOffset = 0.6
+        local aimUpOffset = 0.4
+        local lastTargetPart = nil -- Stickiness
+        local smoothedVelocity = Vector3.new()
+        local validEnemies = {}
+        local entityCache = {} -- Cache for NPC metadata (Shield, Mutant, etc.)
+
+        -- [ NPC TARGET LIST (Exact Names) ]
+        local TargetNPCs = {
+            -- BOSSES (Purple ESP / Infinite Range / High Priority)
+            ["chimera"] = {isBoss = true, isMutant = true},
+            
+            -- ELITES (Orange ESP / Priority)
+            ["mikhail"] = {elite = true, isMutant = true},
+            ["gilbert"] = {elite = true, isMutant = true},
+            ["sin"] = {elite = true, isMutant = true},
+
+            -- GENERAL GROUPS (Red ESP / Normal Priority)
+            -- These keywords catch ALL numbered or suffixed variations automatically.
+            ["slasher"] = {isMutant = true},
+            ["fireslasher"] = {isMutant = true},
+            ["bomber"] = {isMutant = true},
+            ["shielder"] = {isMutant = true},
+            ["lurker"] = {isMutant = true},
+            ["lurkerrsu4"] = {isMutant = true},
+            ["lurkerrsu5"] = {isMutant = true},
+            ["riserhazmat"] = {isMutant = true},
+            ["fireriser"] = {isMutant = true},
+            ["crawler"] = {isMutant = true},
+            ["gunner"] = {isMutant = true},
+            ["riserrif"] = {isMutant = true},
+            ["fury"] = {isMutant = true},
+            ["chemical"] = {isMutant = true},
+            ["toxic"] = {isMutant = true},
+            ["rif"] = {isMutant = true},
+            ["ci"] = {isMutant = true},
+            ["viral"] = {isMutant = true},
+            ["viralleader"] = {isMutant = true, isBoss = true},
+            ["infected"] = {isMutant = true},
+            ["pointman"] = {isMutant = true},
+            ["engineer"] = {isMutant = true},
+            ["riser"] = {isMutant = true},
+            ["mutant"] = {isMutant = true}
+        }
+
+        local function getTargetData(name)
+            local n = string.lower(name)
+            for targetName, data in pairs(TargetNPCs) do
+                if string.find(n, targetName) then
+                    return data
+                end
+            end
+            return nil
+        end
+
+        -- HELPER: Shield Detection (Keep as it checks parts, not just names)
+        local function isShieldEntity(model)
+            if not model then return false end
+            for _, child in ipairs(model:GetDescendants()) do
+                if child:IsA("BasePart") or child:IsA("Model") then
+                    local cn = string.lower(child.Name)
+                    if string.find(cn, "shield") or string.find(cn, "riot") then 
+                        -- Ignore face shield/glass
+                        if not (string.find(cn, "face") or string.find(cn, "glass")) then
+                            return true 
+                        end
+                    end
+                end
+            end
+            return false
+        end
+        -- HELPER: Check if Player is Infected (Moved Up)
+        local function isPlayerInfected(plr)
+            if not plr then return false end
+
+            -- 1. TEAM CHECK
+            local team = plr.Team
+            if team then
+                local tn = string.lower(team.Name)
+                if string.find(tn, "infect") or string.find(tn, "monster") or string.find(tn, "zombie") or string.find(tn, "vật thí nghiệm") then
+                    return true
+                end
+            end
+
+            -- 2. TOOL/MARKER CHECK
+            local char = plr.Character
             if char then
-                for _, part in ipairs(char:GetDescendants()) do
+                local cName = string.lower(char.Name)
+                if string.find(cName, "classless") or string.find(cName, "viral") then return true end
+
+                if char:FindFirstChild("Infected") or char:FindFirstChild("Claw") or char:FindFirstChild("Bite") then return true end
+                -- Recursive tool check for "Claw", "Bite", or known Infected Weapons
+                for _, child in ipairs(char:GetChildren()) do
+                    if child:IsA("Tool") or child:IsA("Model") then -- Some weapons might be Models
+                        local n = string.lower(child.Name)
+                        if n == "claw" or n == "bite" or n == "infect" or n == "attack" or n == "viralmaul" or n == "beanbag" or n == "mp5infected" then return true end
+                    end
+                end
+            end
+
+            return false
+        end
+
+        -- 1. Enemy Tracker (Smart Scanner)
+        local function addEnemy(model)
+            if model == LocalPlayer.Character then return end
+            local plr = Players:GetPlayerFromCharacter(model)
+            if not model:FindFirstChildOfClass("Humanoid") then return end
+            if isNPCBlacklisted(model.Name) then return end
+            if table.find(validEnemies, model) then return end
+
+            -- STATUE/MAP FILTER
+            local root = model:FindFirstChild("HumanoidRootPart")
+            local isSleeping = false
+            local lowName = string.lower(model.Name)
+            for _, sName in ipairs({"mikhail", "gilbert", "chimera", "lurker", "riser", "slasher", "rif"}) do
+                if string.find(lowName, sName) then isSleeping = true; break end
+            end
+
+            local parentName = model.Parent and string.lower(model.Parent.Name) or ""
+            local isMapObject = string.find(parentName, "decor") or string.find(parentName, "map") or string.find(parentName, "statue") or string.find(parentName, "prop")
+
+            if root and (root.Anchored or isMapObject) and not isSleeping then return end
+
+            -- PRE-CACHE METADATA (Strict Player/NPC Separation)
+            local metadata = nil
+            
+            if plr then
+                return -- [ ACTIVE PLAYER PROTECTION ] Only protect real, currently active player characters
+            end
+
+            -- [ AIM AT EVERYTHING ELSE ]
+            -- If it's an NPC/Monster (even if it was a player), we aim.
+            local targetData = getTargetData(model.Name)
+            if targetData then
+                metadata = {
+                    isMutant = targetData.isMutant or false,
+                    isBoss = targetData.isBoss or false,
+                    isShield = isShieldEntity(model),
+                    elite = targetData.elite or false,
+                    ignoreHealth = targetData.ignoreHealth or false
+                }
+            else
+                -- Check if it looks like an infected/viral model even if not in list
+                if string.find(lowName, "viral") or string.find(lowName, "infect") or string.find(lowName, "mutant") then
+                     metadata = { isMutant = true, isBoss = false, isShield = false, elite = false }
+                else
+                    return -- Skip unknown props/objects
+                end
+            end
+
+            table.insert(validEnemies, model)
+            entityCache[model] = metadata
+            model.AncestryChanged:Connect(function()
+                if not model:IsDescendantOf(game) then
+                    local index = table.find(validEnemies, model)
+                    if index then table.remove(validEnemies, index) end
+                    entityCache[model] = nil -- Clean up cache too
+                end
+            end)
+            -- Removing from validEnemies on Died is now handled in the main Aim loop
+            -- to allow for "Death State Bypassing" during dodge rolls.
+        end
+
+        -- Scan Logic
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then addEnemy(obj) end
+        end
+        workspace.DescendantAdded:Connect(function(descendant)
+            if descendant:IsA("Model") then
+                task.wait(0.1)
+                if descendant:FindFirstChildOfClass("Humanoid") then addEnemy(descendant) end
+            end
+        end)
+
+        -- Helper check replaced by robust version above
+
+        local lastTarget = nil -- Store last valid target for locking
+        local lastTargetTime = 0
+        local lastLoggedTarget = nil -- Store last NPC printed in debug logs
+
+        -- 2. Aim Logic
+        -- Shared Raycast Parameters
+        local globalRayParams = RaycastParams.new()
+        globalRayParams.FilterType = Enum.RaycastFilterType.Exclude
+        globalRayParams.IgnoreWater = true
+
+        local function checkPartVisibility(part, targetModel, myChar)
+            if not part then return false end
+            local origin = Camera.CFrame.Position
+            local tPos = part.Position
+            local direction = (tPos - origin)
+
+            local currentFilter = {myChar, Camera}
+            for i = 1, 4 do 
+                globalRayParams.FilterDescendantsInstances = currentFilter
+                local result = workspace:Raycast(origin, direction, globalRayParams)
+                if not result then return true, tPos end
+                
+                local hit = result.Instance
+                local isPartOfChar = hit:IsDescendantOf(targetModel)
+                
+                local lowerName = string.lower(hit.Name)
+                if string.find(lowerName, "shield") or string.find(lowerName, "khiên") then 
+                    if isPartOfChar then return true, tPos else return false end
+                end
+                
+                if isPartOfChar or hit == part then return true, tPos end
+                
+                if hit.Transparency > 0.7 or not hit.CanCollide then
+                    table.insert(currentFilter, hit)
+                else
+                    return false
+                end
+            end
+            return false
+        end
+
+                        -- 2. Aim Logic (Optimized)
+                        local function getClosestTarget()
+        local mousePos = UserInputService:GetMouseLocation()
+        local candidates = {}
+        local char = LocalPlayer.Character
+        local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
+        local myPos = myRoot.Position
+
+        -- PASS 1: Lightweight Screening (2D Proximity & Status)
+        for _, enemy in ipairs(validEnemies) do
+            if not enemy or enemy == char then continue end
+            local root = enemy:FindFirstChild("HumanoidRootPart")
+            local humanoid = nil
+            for _, c in ipairs(enemy:GetChildren()) do
+                if c:IsA("Humanoid") and c.Health > 0 then
+                    humanoid = c
+                    break
+                end
+            end
+            if not humanoid then humanoid = enemy:FindFirstChild("Humanoid") end
+            if not root or not humanoid then continue end
+
+            -- Metadata Cache (Consolidated)
+            local meta = entityCache[enemy]
+            if not meta then
+                local targetData = getTargetData(enemy.Name)
+                meta = {
+                    isMutant = targetData and targetData.isMutant or false,
+                    isBoss = targetData and targetData.isBoss or false,
+                    isShield = isShieldEntity(enemy),
+                    elite = targetData and targetData.elite or false
+                }
+                entityCache[enemy] = meta
+            end
+
+            -- Distance & FOV Check
+            local dist3D = (myPos - root.Position).Magnitude
+            local maxRange = meta.isBoss and 2000 or 400
+            if dist3D > maxRange then continue end
+
+            local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
+            local isAmbush = (dist3D < 50) -- 360 DEGREEE LOGIC: Detect threats behind/close automatically (Increased from 35)
+            
+            -- Filter: Only allow if on screen OR extremely close (360 defense)
+            if not (onScreen or isAmbush) then continue end
+
+            local mouseDist = onScreen and (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude or (aimFOV * 2)
+            -- FOV Filter: Only applies to enemies outside the Ambush/Danger zone
+            if not isAmbush and mouseDist > aimFOV then continue end
+
+            -- Death/State Logic (Strict Filter)
+            local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
+            
+            -- NEW: Downed/Ragdoll Check (Fixes Aiming at Ground)
+            local head = enemy:FindFirstChild("Head")
+            local headY = head and head.Position.Y or 0
+            local rootY = root.Position.Y
+            local heightDiff = math.abs(headY - rootY)
+            
+            -- PRONE MEMORY: Keep them marked as prone for 2.5s if they hit any threshold
+            local isCurrentlyProne = humanoid.PlatformStand or 
+                                    (humanoid:GetState() == Enum.HumanoidStateType.FallingDown) or 
+                                    (humanoid:GetState() == Enum.HumanoidStateType.Ragdoll) or
+                                    (humanoid:GetState() == Enum.HumanoidStateType.Physics) or
+                                    (humanoid.Sit) or (root.CFrame.UpVector.Y < 0.4) or
+                                    (heightDiff < 0.8) or (enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned"))
+            
+            if isCurrentlyProne then meta.lastProneTime = tick() end
+            local isDowned = (tick() - (meta.lastProneTime or 0) < 0.2) -- Faster recovery: 0.2s
+            
+            if isDead and not (meta and meta.ignoreHealth) then continue end -- FORCE RELEASE DEAD TARGETS (Except for Viral with ignoreHealth)
+            
+            if isDowned then
+                -- BOSS/SHIELD/ELITE EXEMPTION: Track bosses, shield-enemies, and elites while alive but downed
+                -- ADDED: Slasher/FireSlasher exemption to keep lock as normal enemies
+                local name = string.lower(enemy.Name)
+                local isSlasher = string.find(name, "slasher")
+                
+                local isMutant = string.find(name, "mutant")
+                
+                if not (meta.isBoss or meta.isShield or meta.elite or isSlasher or isMutant) then
+                    local velocityMag = root.Velocity.Magnitude
+                    -- If they are downed/ragdolled and not moving extremely fast, skip
+                    if velocityMag <= 15.0 then continue end
+                end
+            end
+
+            -- ANCHORED CHECK (With Self-Defense Override)
+            -- If < 15 studs, ignore Anchored status (Self Defense Override)
+            -- If Elite/Mutant/Boss/Shield, ignore Anchored status
+            local isSelfDefense = (dist3D <= 40) -- (Increased from 25)
+            local name = string.lower(enemy.Name)
+            local isSlasher = string.find(name, "slasher")
+            local isExempt = meta.isBoss or meta.isShield or meta.elite or meta.isMutant or isSlasher or hasWeapon(enemy)
+            
+            if root.Anchored and not (isSelfDefense or isExempt) then continue end
+            
+            table.insert(candidates, {
+                model = enemy,
+                dist = mouseDist,
+                dist3D = dist3D,
+                root = root,
+                humanoid = humanoid,
+                meta = meta,
+                isDead = isDead
+            })
+        end
+
+        -- Sort by PROXIMITY (User Request: "Prioritize all monsters near self first")
+        table.sort(candidates, function(a, b) 
+            -- TIER 1: DANGER ZONE (< 35 studs) - Absolute Priority (Increased from 25)
+            local aIsDanger = (a.dist3D < 50)
+            local bIsDanger = (b.dist3D < 50)
+            
+            if aIsDanger and not bIsDanger then return true end
+            if bIsDanger and not aIsDanger then return false end
+            
+            if aIsDanger and bIsDanger then
+                return a.dist3D < b.dist3D -- If both close, closest wins
+            end
+
+            -- TIER 2: STANDARD SCORING (Distance & Mouse Proximity)
+            local scoreA = (a.dist3D * 20) + a.dist - (a.meta.isBoss and 300 or 0)
+            local scoreB = (b.dist3D * 20) + b.dist - (b.meta.isBoss and 300 or 0)
+            
+            -- STICKINESS: Maintain target focus
+            if a.model == lastTarget then scoreA = scoreA - 50 end
+            if b.model == lastTarget then scoreB = scoreB - 50 end
+
+            -- BACKSTAB PRIORITY: Bonus for targets facing away (vulnerable)
+            local aIsBack = (a.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.5)
+            local bIsBack = (b.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.5)
+            if aIsBack then scoreA = scoreA - 80 end
+            if bIsBack then scoreB = scoreB - 80 end
+
+            return scoreA < scoreB
+        end)
+
+        -- PASS 2: Heavy Physics (Visibility) on Top Candidates
+        globalRayParams.FilterDescendantsInstances = {char, Camera}
+
+        for _, cand in ipairs(candidates) do
+            local character = cand.model
+            local meta = cand.meta
+            
+                            -- Check Targets with STICKINESS (Stay on same part if possible)
+                            local currentTargetPart = nil
+                            local currentLockedPos = nil
+                            
+                            -- 1. Try to stay on the same part we were already aiming at
+                            -- ADDED: If held part is NOT Head, re-check Head/Torso visibility every frame to recover aim
+                            if lastTarget == character and lastTargetPart then
+                                local heldPart = character:FindFirstChild(lastTargetPart)
+                                local head = character:FindFirstChild("Head")
+                                
+                                -- Always try to "Switch back" to Head if it becomes visible
+                                if lastTargetPart ~= "Head" and head then
+                                    local hVis, hPos = checkPartVisibility(head, character, char, globalRayParams)
+                                    if hVis then
+                                        currentTargetPart, currentLockedPos = head, hPos
+                                        lastTargetPart = "Head"
+                                    end
+                                end
+                                
+                                if not currentTargetPart and heldPart then
+                                    local vis, pos = checkPartVisibility(heldPart, character, char, globalRayParams)
+                                    if vis then currentTargetPart, currentLockedPos = heldPart, pos end
+                                end
+                            end
+
+                            -- 2. If no persistent part or it's hidden, find a new one
+                            if not currentTargetPart then
+                                local targets = {"Head", "UpperTorso", "HumanoidRootPart"}
+                                for _, name in ipairs(targets) do
+                                    local p = character:FindFirstChild(name)
+                                    local vis, pos = checkPartVisibility(p, character, char, globalRayParams)
+                                    if vis then 
+                                        currentTargetPart, currentLockedPos = p, pos
+                                        lastTargetPart = name -- Save for next frame
+                                        break 
+                                    end
+                                end
+                            end
+                            
+                            if not currentTargetPart then
+                                local detailParts = {"RightUpperArm", "LeftUpperArm", "RightLowerArm", "LeftLowerArm", "RightLowerLeg", "LeftLowerLeg"}
+                                for _, name in ipairs(detailParts) do
+                                    local part = character:FindFirstChild(name)
+                                    local vis, pos = checkPartVisibility(part, character, char, globalRayParams)
+                                    if vis then 
+                                        currentTargetPart, currentLockedPos = part, pos
+                                        lastTargetPart = name -- Save for next frame
+                                        break 
+                                    end
+                                end
+                            end
+            
+            -- Valid Target Found? Return immediately (Snap to it!)
+            if currentTargetPart then
+                local isFacingAway = (cand.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.6)
+                
+                -- DYNAMIC SHIELD BYPASS: Disable offset if downed OR facing away
+                local hum = cand.humanoid
+                local root = cand.root
+                local head = character:FindFirstChild("Head")
+                local hDiff = head and math.abs(head.Position.Y - root.Position.Y) or 5
+                
+                -- PUSH MEMORY: If spinning (> 5) or pushed (> 15), treat as vulnerable for 0.6s
+                if cand.root.RotVelocity.Magnitude > 5 or cand.root.Velocity.Magnitude > 15 then meta.lastPushTime = tick() end
+                local isRecentlyPushed = (tick() - (meta.lastPushTime or 0) < 0.6)
+
+                local isCurrentlyProne = hum.PlatformStand or (hum:GetState() == Enum.HumanoidStateType.FallingDown) or (hum:GetState() == Enum.HumanoidStateType.Ragdoll) or (hum:GetState() == Enum.HumanoidStateType.Physics) or (hum.Sit) or (root.CFrame.UpVector.Y < 0.4) or (hDiff < 0.8) or (character:FindFirstChild("Stunned")) or isRecentlyPushed
+                if isCurrentlyProne then meta.lastProneTime = tick() end
+                
+                local isProne = (tick() - (meta.lastProneTime or 0) < 0.2) -- Match recovery time
+                local shouldApplyOffset = meta.isShield and not (isProne or isFacingAway)
+
+                -- Persistence Update
+                lastTarget = character
+                lastTargetTime = tick()
+
+                -- Debug Update removed for production
+
+                return currentTargetPart, currentLockedPos, shouldApplyOffset, cand.root.Velocity, currentTargetPart.Name, meta.isHighMob, isFacingAway, character
+            end
+        end
+
+        -- PASS 3: Target Persistence (Grace Period for Bosses/Active Targets)
+        -- If we lost the target due to teleport/jump, try to find it again for 0.5s
+        if lastTarget and lastTarget.Parent and (tick() - lastTargetTime < 0.5) then
+            local character = lastTarget
+            local root = character:FindFirstChild("HumanoidRootPart")
+            local hum = character:FindFirstChildOfClass("Humanoid")
+            
+            if root and hum and hum.Health > 0 then
+                local meta = entityCache[character] or {isBoss = isBossEntity(character)}
+                
+                -- For bosses, we allow "loose" tracking (check more parts if needed)
+                local targets = {"Head", "UpperTorso", "HumanoidRootPart", "LowerTorso", "RightUpperArm", "LeftUpperArm"}
+                for _, name in ipairs(targets) do
+                    local p = character:FindFirstChild(name)
+                    if p then
+                        local vis, pos = checkPartVisibility(p, character, char, globalRayParams)
+                        if vis or meta.isBoss then -- Bosses can be tracked even if occluded for 0.5s
+                            -- DYNAMIC SHIELD BYPASS (Persistence): Disable offset if downed
+                            local headPos = character:FindFirstChild("Head") and character.Head.Position.Y or 0
+                            local hDiff = math.abs(headPos - root.Position.Y)
+                            -- PUSH MEMORY (Persistence)
+                            if root.RotVelocity.Magnitude > 5 or root.Velocity.Magnitude > 15 then meta.lastPushTime = tick() end
+                            local isRecentlyPushed = (tick() - (meta.lastPushTime or 0) < 0.6)
+
+                            local isCurrentlyProne = hum.PlatformStand or (hum:GetState() == Enum.HumanoidStateType.FallingDown) or (hum:GetState() == Enum.HumanoidStateType.Ragdoll) or (hum:GetState() == Enum.HumanoidStateType.Physics) or (hum.Sit) or (root.CFrame.UpVector.Y < 0.4) or (hDiff < 0.8) or (character:FindFirstChild("Stunned")) or isRecentlyPushed
+                            if isCurrentlyProne then meta.lastProneTime = tick() end
+                            
+                            local isProne = (tick() - (meta.lastProneTime or 0) < 0.5)
+                            local shouldApplyOffset = meta.isShield and not isProne
+                            
+                            return p, pos or p.Position, shouldApplyOffset, root.Velocity, p.Name, meta.isHighMob, false, character
+                        end
+                    end
+                end
+            end
+        end
+
+        return nil
+                        end
+
+        -- 3. Aim Loop
+        local isAiming = false
+        UserInputService.InputBegan:Connect(function(input, gpe)
+            if input.UserInputType == aimKey then isAiming = true end
+        end)
+        UserInputService.InputEnded:Connect(function(input, gpe)
+            if input.UserInputType == aimKey then 
+                isAiming = false 
+                lastTarget = nil 
+                lastTargetPart = nil
+                smoothedVelocity = Vector3.new()
+            end
+        end)
+
+        RunService.RenderStepped:Connect(function()
+            if not ScreenGui.Parent then return end
+            
+
+            if aimEnabled then
+                if isAiming then
+                    local targetPart, targetPos, isShield, velocity, partName, isHighMob, isFacingAway, targetChar = getClosestTarget()
+                    if targetPart and targetPos then
+
+                        local currentCF = Camera.CFrame
+                        local finalTargetPos = targetPos
+                        
+                                        -- 1. VELOCITY SMOOTHING & PREDICTION
+                                        -- Dampen the velocity to avoid jitter from NPC movement spikes
+                                        smoothedVelocity = smoothedVelocity:Lerp(velocity, 0.2)
+                                        
+                                        local predictionFactor = isHighMob and 0.12 or 0.06
+                                        if smoothedVelocity.Magnitude > 1.5 then
+                                            finalTargetPos = finalTargetPos + (smoothedVelocity * predictionFactor)
+                                        end
+                                        
+                                        -- 2. SHIELD OFFSET (Right + Up)
+                                        if isShield then
+                                            finalTargetPos = finalTargetPos + (currentCF.RightVector * aimRightOffset) + (currentCF.UpVector * aimUpOffset)
+                                        end
+
+                                        -- 3. BACK AIM LOGIC (New)
+                                        if isFacingAway then
+                                            -- Aim slightly "towards" the player to ensure back hit registration
+                                            finalTargetPos = finalTargetPos - (currentCF.LookVector * 0.4)
+                                        end
+                                        
+                                        -- 4. ADAPTIVE SMOOTHING (Fine-tuned for stability)
+                                        local velocityMag = smoothedVelocity.Magnitude
+                                        local adaptiveSmooth = aimSmoothness
+                                        
+                                        if velocityMag > 5 then
+                                            -- Gradually increase speed but stay within stable limits
+                                            local speedMult = math.clamp(velocityMag / 10, 1.2, 2.0)
+                                            adaptiveSmooth = math.clamp(aimSmoothness * speedMult, 0.05, 0.6)
+                                        end
+                                        
+                                        local targetCF = CFrame.new(currentCF.Position, finalTargetPos)
+                                        Camera.CFrame = currentCF:Lerp(targetCF, adaptiveSmooth)
+                    end
+                end
+            end
+        end)
+
+        createToggle(CombatTab, "Aim Bot", false, function(state)
+            aimEnabled = state
+        end)
+
+        -- ====================
+        -- CATEGORY: VISUALS
+        -- ====================
+
+        -- 1. Player ESP
+        -- 1. Player ESP (Optimized Highlight Manager)
+        local espEnabled = false
+        local espContainer = Instance.new("Folder")
+        espContainer.Name = "ExaminationESP"
+        espContainer.Parent = CoreGui
+
+        local potentialPlayerTargets = {}
+
+        local function clearESP() 
+            espContainer:ClearAllChildren() 
+            potentialPlayerTargets = {}
+        end
+
+        local staffCache = {}
+        local staffCheckDebounce = {}
+
+
+        local function managePlayerHighlights()
+            while espEnabled do
+                if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    task.wait(1)
+                    continue
+                end
+                
+                local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+                
+                for player, _ in pairs(potentialPlayerTargets) do
+                    if not player or not player.Parent then 
+                        potentialPlayerTargets[player] = nil
+                        staffCache[player] = nil
+                        continue 
+                    end
+                    
+                    local char = player.Character
+                    if not char or not char:IsDescendantOf(game) then 
+                        continue 
+                    end
+                    
+                    local root = char:FindFirstChild("HumanoidRootPart")
+                    if not root then continue end
+
+                    -- STATUS CHECKS
+                    local isInfected = isPlayerInfected(player)
+                    local isFriendly = true -- Every real player is a teammate/friend (PVE logic)
+                    local isStaff = staffCache[player]
+                    
+                    if isStaff == nil and not staffCheckDebounce[player] then
+                        staffCheckDebounce[player] = true
+                        task.spawn(function()
+                            local s, _ = detectStaff(player)
+                            staffCache[player] = s or false
+                            staffCheckDebounce[player] = nil
+                        end)
+                    end
+                    
+                    local dist = (root.Position - myPos).Magnitude
+                    local hl = char:FindFirstChild("ESPHighlight")
+                    
+                    -- SLOT MANAGEMENT: Only highlight if < 150 studs (UNLESS STAFF)
+                    
+                    if dist < 150 or isStaff then
+                        if not hl then
+                            hl = Instance.new("Highlight")
+                            hl.Name = "ESPHighlight"
+                            hl.Adornee = char
+                            hl.FillTransparency = 1 -- Outline only
+                            hl.OutlineTransparency = 0
+                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            hl.Parent = char 
+                            
+                            -- Failsafe Cleanup
+                            char.AncestryChanged:Connect(function()
+                                if not char:IsDescendantOf(game) and hl then hl:Destroy() end
+                            end)
+                        end
+
+                        -- UPDATE COLOR
+                        local teamName = player.Team and string.lower(player.Team.Name) or ""
+                        
+                        if isStaff then
+                            hl.FillColor = Color3.fromRGB(255, 0, 255) -- Purple
+                            hl.OutlineColor = Color3.fromRGB(255, 0, 255)
+                        elseif isFriendly then
+                            -- All real players stay Blue/Teammate color
+                            hl.FillColor = Color3.fromRGB(0, 150, 255) -- Blue
+                            hl.OutlineColor = Color3.fromRGB(0, 150, 255)
+                            hl.FillTransparency = 1
+                        elseif isInfected then
+                            hl.FillColor = Color3.fromRGB(255, 170, 0) -- Orange
+                            hl.OutlineColor = Color3.fromRGB(255, 170, 0)
+                            hl.FillTransparency = 1 
+                        elseif string.find(teamName, "menlo") then -- Menlo Team (Humans)
+                            hl.FillColor = Color3.fromRGB(0, 150, 255) -- Blue
+                            hl.OutlineColor = Color3.fromRGB(0, 150, 255)
+                        else
+                            hl.FillColor = Color3.fromRGB(150, 150, 150) -- Gray
+                            hl.OutlineColor = Color3.fromRGB(150, 150, 150)
+                        end
+                    else
+                        -- Too far, free up the slot for Bosses/Nearby Enemies
+                        if hl then hl:Destroy() end
+                    end
+                end
+                task.wait(0.2)
+            end
+        end
+
+        local function addESP(player)
+            if player == LocalPlayer then return end
+            potentialPlayerTargets[player] = true
+        end
+
+        createToggle(VisualsTab, "Player ESP", false, function(state)
+            espEnabled = state
+            if state then
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer then addESP(plr) end
+                end
+                Players.PlayerAdded:Connect(function(plr)
+                    if espEnabled and plr ~= LocalPlayer then addESP(plr) end
+                end)
+                task.spawn(managePlayerHighlights)
+            else
+                clearESP()
+                -- Loop handles cleanup of individual highlights next cycle or manually here if needed
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
+                        plr.Character.ESPHighlight:Destroy()
+                    end
+                end
+            end
+        end)
+
+        -- 2. Infect ESP (Enemies) - Optimized Distance Limit
+        local infectEspEnabled = false
+        local infectEspContainer = Instance.new("Folder")
+        infectEspContainer.Name = "InfectESP"
+        infectEspContainer.Parent = CoreGui
+
+        -- Track Potential Enemies for ESP
+        local potentialEspTargets = {} 
+
+        local function clearInfectESP() 
+            infectEspContainer:ClearAllChildren() 
+            -- Manual Cleanup because Highlights are now parented to Models
+            for model, _ in pairs(potentialEspTargets) do
+                if model and model:FindFirstChild("InfectHighlight") then
+                    model.InfectHighlight:Destroy()
+                end
+            end
+            potentialEspTargets = {}
+        end
+
+        local function manageInfectHighlights()
+            local printedBossDebug = {} -- Debounce for debug prints
+            
+            while infectEspEnabled do
+                if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    task.wait(1)
+                    continue
+                end
+                
+                local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+                
+                for model, _ in pairs(potentialEspTargets) do
+                    if not model or not model.Parent then 
+                        potentialEspTargets[model] = nil 
+                        continue 
+                    end
+
+                    local modelName = string.lower(model.Name)
+                    local isPlr = Players:GetPlayerFromCharacter(model)
+                    if model == LocalPlayer.Character or model.Name == LocalPlayer.Name or isPlr then
+                        potentialEspTargets[model] = nil
+                        local highlight = model:FindFirstChild("InfectHighlight")
+                        if highlight then pcall(function() highlight:Destroy() end) end
+                        continue
+                    end
+
+                    local root = model:FindFirstChild("HumanoidRootPart")
+                    local humanoid = nil
+                    local firstHum = nil
+                    for _, child in ipairs(model:GetChildren()) do
+                        if child:IsA("Humanoid") then
+                            if not firstHum then firstHum = child end
+                            if child.Health > 0 then
+                                humanoid = child
+                                break
+                            end
+                        end
+                    end
+                    humanoid = humanoid or firstHum
+                    if not humanoid then continue end
+                    
+                    -- GET CACHED METADATA
+                    local meta = entityCache[model]
+                    local isBoss = meta and meta.isBoss or false
+                    local isElite = meta and meta.elite or false
+                    local isViral = meta and (meta.ignoreHealth or string.find(modelName, "viral"))
+
+                    -- MONSTER DETECTION
+                    -- If it's not an active player character, it's a monster (Red ESP)
+                    local isFriendlyNPC = false
+                    -- (Removed the name-matching loop that was protecting uncontrollable monsters)
+
+                    -- STATUS CHECKS
+                    local velocityMag = root and root.Velocity.Magnitude or 0
+                    local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead) or (humanoid.Parent == nil)
+                    
+                    -- SKIP DEAD/INVALID
+                    -- Monsters must be cleared immediately when health hits 0.
+                    -- ONLY Transformed Players (isFriendlyNPC) stay highlighted while dead/downed.
+                    if isDead and not isFriendlyNPC then
+                        local highlight = model:FindFirstChild("InfectHighlight")
+                        if highlight then pcall(function() highlight:Destroy() end) end
+                        
+                        -- Remove from tracker if it's a standard monster and has stopped moving
+                        if (not meta or not meta.isBoss) and velocityMag < 1 then 
+                            potentialEspTargets[model] = nil 
+                        end
+                        continue
+                    end
+
+                    if root then
+                        local dist = (root.Position - myPos).Magnitude
+                        
+                        -- Distance Sanity Check: Remove if dead and close (except players)
+                        if isDead and dist < 2 and not isFriendlyNPC then 
+                            potentialEspTargets[model] = nil 
+                            local highlight = model:FindFirstChild("InfectHighlight")
+                            if highlight then highlight:Destroy() end
+                            continue
+                        end
+
+                        local maxDist = (isBoss or isFriendlyNPC) and 2000 or 150
+                        local highlight = model:FindFirstChild("InfectHighlight")
+                        
+                        if dist < maxDist then
+                            local hl = highlight
+                            if not hl then
+                                hl = Instance.new("Highlight")
+                                hl.Name = "InfectHighlight"
+                                hl.Adornee = model
+                                hl.FillTransparency = 0.85
+                                hl.OutlineTransparency = 0
+                                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                hl.Parent = model
+                            end
+
+                            if isFriendlyNPC then
+                                hl.FillColor = Color3.fromRGB(0, 255, 0) -- Green for friends
+                                hl.OutlineColor = Color3.fromRGB(0, 255, 0)
+                                hl.FillTransparency = 1 
+                            elseif isBoss then
+                                hl.FillColor = Color3.fromRGB(130, 0, 255)
+                                hl.OutlineColor = Color3.fromRGB(200, 100, 255)
+                                hl.FillTransparency = 1 
+                            elseif isElite then
+                                hl.FillColor = Color3.fromRGB(255, 140, 0) -- Orange
+                                hl.OutlineColor = Color3.fromRGB(255, 200, 0) 
+                                hl.FillTransparency = 1 
+                            else
+                                hl.FillColor = Color3.fromRGB(255, 0, 0) -- Red
+                                hl.OutlineColor = Color3.fromRGB(255, 0, 0)
+                                hl.FillTransparency = 1
+                            end
+                        else
+                            if highlight then highlight:Destroy() end
+                        end
+                    end
+                end
+                task.wait(0.1) -- Fast Update (10 times a second for instant kill feedback)
+            end
+        end
+
+        local function addInfectESP(model)
+            if not infectEspEnabled then return end
+        if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return end
+        if Players:GetPlayerFromCharacter(model) or Players:FindFirstChild(model.Name) then return end
+            
+            local humanoid = model:FindFirstChildOfClass("Humanoid")
+            if not humanoid then return end
+            
+            if Camera.CameraSubject == humanoid then return end
+
+            -- SMART FILTER (Event-Driven)
+            local root = model:FindFirstChild("HumanoidRootPart")
+            if not root then return end
+
+            local function isValidEnemy()
+                -- 0. Strict Self Check & Player Check
+                if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
+                if Players:GetPlayerFromCharacter(model) or Players:FindFirstChild(model.Name) then return false end
+
+                -- 0.1 Name Blacklist (Prop filter)
+                if isNPCBlacklisted(model.Name) then return false end
+                
+                -- 0.2 Statue/Decoration Filter (IMPORTANT FIX)
+                -- Check if it's anchored OR inside a map/decoration folder
+                local isSleeping = false
+                local lowName = string.lower(model.Name)
+                for _, sName in ipairs(sleepingEnemies) do
+                    if string.find(lowName, sName) then
+                        isSleeping = true
+                        break
+                    end
+                end
+
+                local parentName = model.Parent and string.lower(model.Parent.Name) or ""
+                local isMapObject = string.find(parentName, "decor") or string.find(parentName, "map") or string.find(parentName, "statue") or string.find(parentName, "prop")
+
+                if (root.Anchored or isMapObject) and not isSleeping then 
+                    return false 
+                end
+                
+                -- 0.3 Target Check (Now safe from statues)
+                local targetData = getTargetData(model.Name)
+                if targetData then return true end
+
+                -- 1. Default: If it's a valid humanoid NPC (non-player), show it
+                return true
+            end
+
+            local function tryAdd()
+                if isValidEnemy() then
+                    if not potentialEspTargets[model] then
+                        potentialEspTargets[model] = true
+                    end
+                end
+            end
+
+            if isValidEnemy() then
+                tryAdd()
+            else
+                -- Listen for state changes (Anchored -> Unanchored)
+                local anchorConn
+                anchorConn = root:GetPropertyChangedSignal("Anchored"):Connect(function()
+                    if not root.Anchored then
+                        tryAdd()
+                        if anchorConn then anchorConn:Disconnect() anchorConn = nil end
+                    end
+                end)
+                
+                model.AncestryChanged:Connect(function()
+                    if not model:IsDescendantOf(game) then
+                        if anchorConn then anchorConn:Disconnect() end
+                    end
+                end)
+            end
+            
+            -- Standard Cleanup for valid targets is handled in the main loop or AncestryChanged above
+            model.AncestryChanged:Connect(function()
+                if not model:IsDescendantOf(game) then 
+                    potentialEspTargets[model] = nil
+                end
+            end)
+        end
+
+        createToggle(VisualsTab, "Infected ESP", false, function(state)
+            infectEspEnabled = state
+            
+            if state then
+                -- STAGGERED INITIAL SCAN (Prevents Crash)
+                task.spawn(function()
+                    local allDesc = workspace:GetDescendants()
+                    local count = 0
+                    for _, obj in ipairs(allDesc) do
+                        if not infectEspEnabled then break end -- Stop if toggled off
+                        
+                        -- 1. Infected Check
+                        if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+                            addInfectESP(obj)
+                        end
+                        
+                        count = count + 1
+                        if count >= 300 then -- Process 300 items then pause
+                            count = 0
+                            task.wait() -- Move to next frame/cycle
+                        end
+                    end
+                end)
+                -- Start Management Loops
+                task.spawn(manageInfectHighlights)
+            else
+                clearInfectESP()
+            end
+        end)
+
+        -- 1.1 Anti Staff (Moved here)
+        createToggle(LocalTab, "Anti Staff", false, function(state)
+            antiStaffEnabled = state
+            antiStaffAutoLeave = state -- Combined: Enabling detection also enables auto-leave
+            antiStaffGroupId = 34159688 -- Hardcoded for this game
+            
+            if state then
+                -- Check existing players
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    local isStaff, reason = detectStaff(plr)
+                    if isStaff then handleStaffDetection(plr, reason) end
+                end
+            end
+        end)
+
+        workspace.DescendantAdded:Connect(function(obj)
+            if not infectEspEnabled then return end
+            -- Remove fixed wait, handling individual component additions is better
+            if not obj.Parent then return end
+            
+            -- 1. Catch MODEL Added (If complete)
+            if obj:IsA("Model") then
+                task.wait(0.1) -- Give it a moment for children
+                addInfectESP(obj)
+            
+            -- 2. Catch HUMANOID Added (The reliable trigger)
+            elseif obj:IsA("Humanoid") then
+                addInfectESP(obj.Parent)
+            
+            -- 3. Catch ROOT PART Added (Another reliable trigger)
+            elseif obj.Name == "HumanoidRootPart" then
+                addInfectESP(obj.Parent)
+            end
+        end)
+
+        -- 4. Aggressive Mouse Unlock (Shift Lock Fix)
+        local mouseOverrideConnection = RunService.RenderStepped:Connect(function()
+            if not ScreenGui.Parent then 
+                if mouseOverrideConnection then mouseOverrideConnection:Disconnect() end
+                return 
+            end
+            
+            if MainFrame.Visible then
+                UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+                UserInputService.MouseIconEnabled = true
+                
+                -- Also ensure the modal fix is sized correctly just in case
+                local modal = MainFrame:FindFirstChild("ModalFix")
+                if modal then modal.Size = UDim2.new(1, 0, 1, 0) end
+            end
+        end)
+
+        -- Connections are managed at the top of the script now
+
+        -- [ CLEANUP LOGIC ]
+        local function cleanupGUI()
+            if mouseOverrideConnection then
+                mouseOverrideConnection:Disconnect()
+                mouseOverrideConnection = nil
+            end
+            
+            if mainInputConn then
+                mainInputConn:Disconnect()
+                mainInputConn = nil
+            end
+            
+            if fullBrightConnection then 
+                fullBrightConnection:Disconnect() 
+                fullBrightConnection = nil
+                Lighting.Brightness = 1
+                Lighting.GlobalShadows = true
+                Lighting.OutdoorAmbient = Color3.fromRGB(127, 127, 127)
+            end
+            
+            espEnabled = false
+            infectEspEnabled = false
+            aimEnabled = false
+            flyEnabled = false
+            
+            
+            if espContainer then espContainer:Destroy() end
+            if infectEspContainer then infectEspContainer:Destroy() end
+            
+            -- MANUAL ESP CLEANUP (Since we parent highlights to characters now)
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
+                    plr.Character.ESPHighlight:Destroy()
+                end
+            end
+            
+            clearInfectESP()
+            
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr.Character then
+                    if plr.Character:FindFirstChild("Head") and plr.Character.Head:FindFirstChild("ESPTest") then
+                        plr.Character.Head.ESPTest:Destroy()
+                    end
+                    if plr.Character:FindFirstChild("ESPTestHighlight") then
+                        plr.Character.ESPTestHighlight:Destroy()
+                    end
+                end
+            end
+            
+            stopFly()
+            
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                LocalPlayer.Character.Humanoid.WalkSpeed = 16
+                -- Reset collisions on GUI close
+                for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
                     if part:IsA("BasePart") then
                         -- WHITELIST: Only restore collision for CORE parts
-                        -- Restoring collision on limbs (Arms/Legs) causes FLING due to self-collision
                         local restoreList = {
                             ["Head"] = true,
                             ["HumanoidRootPart"] = true,
@@ -786,1093 +1888,36 @@
                             ["LowerTorso"] = true
                         }
                         if restoreList[part.Name] then
-                            part.CanCollide = true
+                            part.CanCollide = true 
                         end
                     end
                 end
             end
-        end
-    end)
-
-    -- ====================
-    -- CATEGORY: COMBAT
-    -- ====================
-
-    local aimEnabled = false
-    local aimKey = Enum.UserInputType.MouseButton2
-    local aimFOV = 200
-    local aimSmoothness = 0.25 -- Lower = Smoother, Higher = Snappier (Tuned to reduce jitter)
-    local aimRightOffset = 0.6
-    local aimUpOffset = 0.4
-    local lastTargetPart = nil -- Stickiness
-    local smoothedVelocity = Vector3.new()
-    local validEnemies = {}
-    local entityCache = {} -- Cache for NPC metadata (Shield, Mutant, etc.)
-
-    -- [ NPC TARGET LIST (Exact Names) ]
-    local TargetNPCs = {
-        -- BOSSES (Purple ESP / Infinite Range / High Priority)
-        ["chimera"] = {isBoss = true, isMutant = true},
-        
-        -- ELITES (Orange ESP / Priority)
-        ["mikhail"] = {elite = true, isMutant = true},
-        ["gilbert"] = {elite = true, isMutant = true},
-        ["sin"] = {elite = true, isMutant = true},
-
-        -- GENERAL GROUPS (Red ESP / Normal Priority)
-        -- These keywords catch ALL numbered or suffixed variations automatically.
-        ["slasher"] = {isMutant = true},
-        ["fireslasher"] = {isMutant = true},
-        ["bomber"] = {isMutant = true},
-        ["shielder"] = {isMutant = true},
-        ["lurker"] = {isMutant = true},
-        ["lurkerrsu4"] = {isMutant = true},
-        ["lurkerrsu5"] = {isMutant = true},
-        ["riserhazmat"] = {isMutant = true},
-        ["fireriser"] = {isMutant = true},
-        ["crawler"] = {isMutant = true},
-        ["gunner"] = {isMutant = true},
-        ["riserrif"] = {isMutant = true},
-        ["fury"] = {isMutant = true},
-        ["chemical"] = {isMutant = true},
-        ["toxic"] = {isMutant = true},
-        ["rif"] = {isMutant = true},
-        ["ci"] = {isMutant = true}
-    }
-
-    local function getTargetData(name)
-        local n = string.lower(name)
-        for targetName, data in pairs(TargetNPCs) do
-            if string.find(n, targetName) then
-                return data
-            end
-        end
-        return nil
-    end
-
-    -- HELPER: Shield Detection (Keep as it checks parts, not just names)
-    local function isShieldEntity(model)
-        if not model then return false end
-        for _, child in ipairs(model:GetDescendants()) do
-            if child:IsA("BasePart") or child:IsA("Model") then
-                local cn = string.lower(child.Name)
-                if string.find(cn, "shield") or string.find(cn, "riot") then 
-                    -- Ignore face shield/glass
-                    if not (string.find(cn, "face") or string.find(cn, "glass")) then
-                        return true 
-                    end
-                end
-            end
-        end
-        return false
-    end
-    -- HELPER: Check if Player is Infected (Moved Up)
-    local function isPlayerInfected(plr)
-        if not plr then return false end
-
-        -- 1. TEAM CHECK
-        local team = plr.Team
-        if team then
-            local tn = string.lower(team.Name)
-            if string.find(tn, "infect") or string.find(tn, "monster") or string.find(tn, "zombie") or string.find(tn, "vật thí nghiệm") then
-                return true
-            end
-        end
-
-        -- 2. TOOL/MARKER CHECK
-        local char = plr.Character
-        if char then
-            local cName = string.lower(char.Name)
-            if string.find(cName, "classless") or string.find(cName, "viral") then return true end
-
-            if char:FindFirstChild("Infected") or char:FindFirstChild("Claw") or char:FindFirstChild("Bite") then return true end
-            -- Recursive tool check for "Claw", "Bite", or known Infected Weapons
-            for _, child in ipairs(char:GetChildren()) do
-                if child:IsA("Tool") or child:IsA("Model") then -- Some weapons might be Models
-                    local n = string.lower(child.Name)
-                    if n == "claw" or n == "bite" or n == "infect" or n == "attack" or n == "viralmaul" or n == "beanbag" or n == "mp5infected" then return true end
-                end
-            end
-        end
-
-        return false
-    end
-
-    -- 1. Enemy Tracker (Smart Scanner)
-    local function addEnemy(model)
-        if model == LocalPlayer.Character then return end
-        local plr = Players:GetPlayerFromCharacter(model)
-        if not model:FindFirstChildOfClass("Humanoid") then return end
-        if isNPCBlacklisted(model.Name) then return end
-        if table.find(validEnemies, model) then return end
-
-        -- STATUE/MAP FILTER
-        local root = model:FindFirstChild("HumanoidRootPart")
-        local isSleeping = false
-        local lowName = string.lower(model.Name)
-        for _, sName in ipairs({"mikhail", "gilbert", "chimera", "lurkerlab", "riserhazmat"}) do
-            if string.find(lowName, sName) then isSleeping = true; break end
-        end
-
-        local parentName = model.Parent and string.lower(model.Parent.Name) or ""
-        local isMapObject = string.find(parentName, "decor") or string.find(parentName, "map") or string.find(parentName, "statue") or string.find(parentName, "prop")
-
-        if root and (root.Anchored or isMapObject) and not isSleeping then return end
-
-        -- PRE-CACHE METADATA (Simplified Name-Based Detection)
-        local targetData = getTargetData(model.Name)
-        if not targetData and not (plr and isPlayerInfected(plr)) then return end 
-
-        table.insert(validEnemies, model)
-        
-        local metadata = {
-            isMutant = targetData and targetData.isMutant or (plr and isPlayerInfected(plr)),
-            isBoss = targetData and targetData.isBoss or false,
-            isShield = isShieldEntity(model),
-            elite = targetData and targetData.elite or false
-        }
-        entityCache[model] = metadata
-        model.AncestryChanged:Connect(function()
-            if not model:IsDescendantOf(game) then
-                local index = table.find(validEnemies, model)
-                if index then table.remove(validEnemies, index) end
-                entityCache[model] = nil -- Clean up cache too
-            end
-        end)
-        -- Removing from validEnemies on Died is now handled in the main Aim loop
-        -- to allow for "Death State Bypassing" during dodge rolls.
-    end
-
-    -- Scan Logic
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then addEnemy(obj) end
-    end
-    workspace.DescendantAdded:Connect(function(descendant)
-        if descendant:IsA("Model") then
-            task.wait(0.1)
-            if descendant:FindFirstChildOfClass("Humanoid") then addEnemy(descendant) end
-        end
-    end)
-
-    -- Helper check replaced by robust version above
-
-    local lastTarget = nil -- Store last valid target for locking
-    local lastTargetTime = 0
-    local lastLoggedTarget = nil -- Store last NPC printed in debug logs
-
-    -- 2. Aim Logic
-    -- Shared Raycast Parameters
-    local globalRayParams = RaycastParams.new()
-    globalRayParams.FilterType = Enum.RaycastFilterType.Exclude
-    globalRayParams.IgnoreWater = true
-
-    local function checkPartVisibility(part, targetModel, myChar)
-        if not part then return false end
-        local origin = Camera.CFrame.Position
-        local tPos = part.Position
-        local direction = (tPos - origin)
-
-        local currentFilter = {myChar, Camera}
-        for i = 1, 4 do 
-            globalRayParams.FilterDescendantsInstances = currentFilter
-            local result = workspace:Raycast(origin, direction, globalRayParams)
-            if not result then return true, tPos end
             
-            local hit = result.Instance
-            local isPartOfChar = hit:IsDescendantOf(targetModel)
-            
-            local lowerName = string.lower(hit.Name)
-            if string.find(lowerName, "shield") or string.find(lowerName, "khiên") then 
-                if isPartOfChar then return true, tPos else return false end
-            end
-            
-            if isPartOfChar or hit == part then return true, tPos end
-            
-            if hit.Transparency > 0.7 or not hit.CanCollide then
-                table.insert(currentFilter, hit)
-            else
-                return false
-            end
-        end
-        return false
-    end
-
-                    -- 2. Aim Logic (Optimized)
-                    local function getClosestTarget()
-    local mousePos = UserInputService:GetMouseLocation()
-    local candidates = {}
-    local char = LocalPlayer.Character
-    local myRoot = char and char:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return end
-    local myPos = myRoot.Position
-
-    -- PASS 1: Lightweight Screening (2D Proximity & Status)
-    for _, enemy in ipairs(validEnemies) do
-        if not enemy or enemy == char then continue end
-        local root = enemy:FindFirstChild("HumanoidRootPart")
-        local humanoid = nil
-        for _, c in ipairs(enemy:GetChildren()) do
-            if c:IsA("Humanoid") and c.Health > 0 then
-                humanoid = c
-                break
-            end
-        end
-        if not humanoid then humanoid = enemy:FindFirstChild("Humanoid") end
-        if not root or not humanoid then continue end
-
-        -- Metadata Cache (Consolidated)
-        local meta = entityCache[enemy]
-        if not meta then
-            local targetData = getTargetData(enemy.Name)
-            meta = {
-                isMutant = targetData and targetData.isMutant or false,
-                isBoss = targetData and targetData.isBoss or false,
-                isShield = isShieldEntity(enemy),
-                elite = targetData and targetData.elite or false
-            }
-            entityCache[enemy] = meta
+            if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
         end
 
-        -- Distance & FOV Check
-        local dist3D = (myPos - root.Position).Magnitude
-        local maxRange = meta.isBoss and 2000 or 400
-        if dist3D > maxRange then continue end
-
-        local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
-        local isAmbush = (dist3D < 20) -- 360 DEGREEE LOGIC: Detect threats behind/close automatically
-        
-        -- Filter: Only allow if on screen OR extremely close (360 defense)
-        if not (onScreen or isAmbush) then continue end
-
-        local mouseDist = onScreen and (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude or (aimFOV * 2)
-        -- FOV Filter: Only applies to enemies outside the Ambush/Danger zone
-        if not isAmbush and mouseDist > aimFOV then continue end
-
-        -- Death/State Logic (Strict Filter)
-        local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
-        
-        -- NEW: Downed/Ragdoll Check (Fixes Aiming at Ground)
-        local head = enemy:FindFirstChild("Head")
-        local headY = head and head.Position.Y or 0
-        local rootY = root.Position.Y
-        local heightDiff = math.abs(headY - rootY)
-        
-        -- PRONE MEMORY: Keep them marked as prone for 2.5s if they hit any threshold
-        local isCurrentlyProne = humanoid.PlatformStand or 
-                                (humanoid:GetState() == Enum.HumanoidStateType.FallingDown) or 
-                                (humanoid:GetState() == Enum.HumanoidStateType.Ragdoll) or
-                                (humanoid:GetState() == Enum.HumanoidStateType.Physics) or
-                                (humanoid.Sit) or (root.CFrame.UpVector.Y < 0.4) or
-                                (heightDiff < 0.8) or (enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned"))
-        
-        if isCurrentlyProne then meta.lastProneTime = tick() end
-        local isDowned = (tick() - (meta.lastProneTime or 0) < 0.2) -- Faster recovery: 0.2s
-        
-        if isDead then continue end -- FORCE RELEASE DEAD TARGETS
-        
-        if isDowned then
-            -- BOSS/SHIELD/ELITE EXEMPTION: Track bosses, shield-enemies, and elites while alive but downed
-            -- ADDED: Slasher/FireSlasher exemption to keep lock as normal enemies
-            local name = string.lower(enemy.Name)
-            local isSlasher = string.find(name, "slasher")
-            
-            if not (meta.isBoss or meta.isShield or meta.elite or isSlasher) then
-                local velocityMag = root.Velocity.Magnitude
-                -- If they are downed/ragdolled and not moving extremely fast, skip
-                if velocityMag <= 15.0 then continue end
-            end
-        end
-
-        -- ANCHORED CHECK (With Self-Defense Override)
-        -- If < 15 studs, ignore Anchored status (Self Defense Override)
-        -- If Elite/Mutant/Boss/Shield, ignore Anchored status
-        local isSelfDefense = (dist3D <= 15)
-        local name = string.lower(enemy.Name)
-        local isSlasher = string.find(name, "slasher")
-        local isExempt = meta.isBoss or meta.isShield or meta.elite or meta.isMutant or isSlasher or hasWeapon(enemy)
-        
-        if root.Anchored and not (isSelfDefense or isExempt) then continue end
-        
-        table.insert(candidates, {
-            model = enemy,
-            dist = mouseDist,
-            dist3D = dist3D,
-            root = root,
-            humanoid = humanoid,
-            meta = meta,
-            isDead = isDead
-        })
-    end
-
-    -- Sort by PROXIMITY (User Request: "Prioritize all monsters near self first")
-    table.sort(candidates, function(a, b) 
-        -- TIER 1: DANGER ZONE (< 25 studs) - Absolute Priority
-        local aIsDanger = (a.dist3D < 25)
-        local bIsDanger = (b.dist3D < 25)
-        
-        if aIsDanger and not bIsDanger then return true end
-        if bIsDanger and not aIsDanger then return false end
-        
-        if aIsDanger and bIsDanger then
-            return a.dist3D < b.dist3D -- If both close, closest wins
-        end
-
-        -- TIER 2: STANDARD SCORING (Distance & Mouse Proximity)
-        local scoreA = (a.dist3D * 20) + a.dist - (a.meta.isBoss and 300 or 0)
-        local scoreB = (b.dist3D * 20) + b.dist - (b.meta.isBoss and 300 or 0)
-        
-        -- STICKINESS: Maintain target focus
-        if a.model == lastTarget then scoreA = scoreA - 50 end
-        if b.model == lastTarget then scoreB = scoreB - 50 end
-
-        -- BACKSTAB PRIORITY: Bonus for targets facing away (vulnerable)
-        local aIsBack = (a.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.5)
-        local bIsBack = (b.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.5)
-        if aIsBack then scoreA = scoreA - 80 end
-        if bIsBack then scoreB = scoreB - 80 end
-
-        return scoreA < scoreB
-    end)
-
-    -- PASS 2: Heavy Physics (Visibility) on Top Candidates
-    globalRayParams.FilterDescendantsInstances = {char, Camera}
-
-    for _, cand in ipairs(candidates) do
-        local character = cand.model
-        local meta = cand.meta
-        
-                        -- Check Targets with STICKINESS (Stay on same part if possible)
-                        local currentTargetPart = nil
-                        local currentLockedPos = nil
-                        
-                        -- 1. Try to stay on the same part we were already aiming at
-                        -- ADDED: If held part is NOT Head, re-check Head/Torso visibility every frame to recover aim
-                        if lastTarget == character and lastTargetPart then
-                            local heldPart = character:FindFirstChild(lastTargetPart)
-                            local head = character:FindFirstChild("Head")
-                            
-                            -- Always try to "Switch back" to Head if it becomes visible
-                            if lastTargetPart ~= "Head" and head then
-                                local hVis, hPos = checkPartVisibility(head, character, char, globalRayParams)
-                                if hVis then
-                                    currentTargetPart, currentLockedPos = head, hPos
-                                    lastTargetPart = "Head"
-                                end
-                            end
-                            
-                            if not currentTargetPart and heldPart then
-                                local vis, pos = checkPartVisibility(heldPart, character, char, globalRayParams)
-                                if vis then currentTargetPart, currentLockedPos = heldPart, pos end
-                            end
-                        end
-
-                        -- 2. If no persistent part or it's hidden, find a new one
-                        if not currentTargetPart then
-                            local targets = {"Head", "UpperTorso", "HumanoidRootPart"}
-                            for _, name in ipairs(targets) do
-                                local p = character:FindFirstChild(name)
-                                local vis, pos = checkPartVisibility(p, character, char, globalRayParams)
-                                if vis then 
-                                    currentTargetPart, currentLockedPos = p, pos
-                                    lastTargetPart = name -- Save for next frame
-                                    break 
-                                end
-                            end
-                        end
-                        
-                        if not currentTargetPart then
-                            local detailParts = {"RightUpperArm", "LeftUpperArm", "RightLowerArm", "LeftLowerArm", "RightLowerLeg", "LeftLowerLeg"}
-                            for _, name in ipairs(detailParts) do
-                                local part = character:FindFirstChild(name)
-                                local vis, pos = checkPartVisibility(part, character, char, globalRayParams)
-                                if vis then 
-                                    currentTargetPart, currentLockedPos = part, pos
-                                    lastTargetPart = name -- Save for next frame
-                                    break 
-                                end
-                            end
-                        end
-        
-        -- Valid Target Found? Return immediately (Snap to it!)
-        if currentTargetPart then
-            local isFacingAway = (cand.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.6)
-            
-            -- DYNAMIC SHIELD BYPASS: Disable offset if downed OR facing away
-            local hum = cand.humanoid
-            local root = cand.root
-            local head = character:FindFirstChild("Head")
-            local hDiff = head and math.abs(head.Position.Y - root.Position.Y) or 5
-            
-            -- PUSH MEMORY: If spinning (> 5) or pushed (> 15), treat as vulnerable for 0.6s
-            if cand.root.RotVelocity.Magnitude > 5 or cand.root.Velocity.Magnitude > 15 then meta.lastPushTime = tick() end
-            local isRecentlyPushed = (tick() - (meta.lastPushTime or 0) < 0.6)
-
-            local isCurrentlyProne = hum.PlatformStand or (hum:GetState() == Enum.HumanoidStateType.FallingDown) or (hum:GetState() == Enum.HumanoidStateType.Ragdoll) or (hum:GetState() == Enum.HumanoidStateType.Physics) or (hum.Sit) or (root.CFrame.UpVector.Y < 0.4) or (hDiff < 0.8) or (character:FindFirstChild("Stunned")) or isRecentlyPushed
-            if isCurrentlyProne then meta.lastProneTime = tick() end
-            
-            local isProne = (tick() - (meta.lastProneTime or 0) < 0.2) -- Match recovery time
-            local shouldApplyOffset = meta.isShield and not (isProne or isFacingAway)
-
-            -- Persistence Update
-            lastTarget = character
-            lastTargetTime = tick()
-
-            -- Debug Update removed for production
-
-            return currentTargetPart, currentLockedPos, shouldApplyOffset, cand.root.Velocity, currentTargetPart.Name, meta.isHighMob, isFacingAway, character
-        end
-    end
-
-    -- PASS 3: Target Persistence (Grace Period for Bosses/Active Targets)
-    -- If we lost the target due to teleport/jump, try to find it again for 0.5s
-    if lastTarget and lastTarget.Parent and (tick() - lastTargetTime < 0.5) then
-        local character = lastTarget
-        local root = character:FindFirstChild("HumanoidRootPart")
-        local hum = character:FindFirstChildOfClass("Humanoid")
-        
-        if root and hum and hum.Health > 0 then
-            local meta = entityCache[character] or {isBoss = isBossEntity(character)}
-            
-            -- For bosses, we allow "loose" tracking (check more parts if needed)
-            local targets = {"Head", "UpperTorso", "HumanoidRootPart", "LowerTorso", "RightUpperArm", "LeftUpperArm"}
-            for _, name in ipairs(targets) do
-                local p = character:FindFirstChild(name)
-                if p then
-                    local vis, pos = checkPartVisibility(p, character, char, globalRayParams)
-                    if vis or meta.isBoss then -- Bosses can be tracked even if occluded for 0.5s
-                        -- DYNAMIC SHIELD BYPASS (Persistence): Disable offset if downed
-                        local headPos = character:FindFirstChild("Head") and character.Head.Position.Y or 0
-                        local hDiff = math.abs(headPos - root.Position.Y)
-                        -- PUSH MEMORY (Persistence)
-                        if root.RotVelocity.Magnitude > 5 or root.Velocity.Magnitude > 15 then meta.lastPushTime = tick() end
-                        local isRecentlyPushed = (tick() - (meta.lastPushTime or 0) < 0.6)
-
-                        local isCurrentlyProne = hum.PlatformStand or (hum:GetState() == Enum.HumanoidStateType.FallingDown) or (hum:GetState() == Enum.HumanoidStateType.Ragdoll) or (hum:GetState() == Enum.HumanoidStateType.Physics) or (hum.Sit) or (root.CFrame.UpVector.Y < 0.4) or (hDiff < 0.8) or (character:FindFirstChild("Stunned")) or isRecentlyPushed
-                        if isCurrentlyProne then meta.lastProneTime = tick() end
-                        
-                        local isProne = (tick() - (meta.lastProneTime or 0) < 0.5)
-                        local shouldApplyOffset = meta.isShield and not isProne
-                        
-                        return p, pos or p.Position, shouldApplyOffset, root.Velocity, p.Name, meta.isHighMob, false, character
-                    end
-                end
-            end
-        end
-    end
-
-    return nil
-                    end
-
-    -- 3. Aim Loop
-    local isAiming = false
-    UserInputService.InputBegan:Connect(function(input, gpe)
-        if input.UserInputType == aimKey then isAiming = true end
-    end)
-    UserInputService.InputEnded:Connect(function(input, gpe)
-        if input.UserInputType == aimKey then 
-            isAiming = false 
-            lastTarget = nil 
-            lastTargetPart = nil
-            smoothedVelocity = Vector3.new()
-        end
-    end)
-
-    RunService.RenderStepped:Connect(function()
-        if not ScreenGui.Parent then return end
-        
-
-        if aimEnabled then
-            if isAiming then
-                local targetPart, targetPos, isShield, velocity, partName, isHighMob, isFacingAway, targetChar = getClosestTarget()
-                if targetPart and targetPos then
-
-                    local currentCF = Camera.CFrame
-                    local finalTargetPos = targetPos
-                    
-                                    -- 1. VELOCITY SMOOTHING & PREDICTION
-                                    -- Dampen the velocity to avoid jitter from NPC movement spikes
-                                    smoothedVelocity = smoothedVelocity:Lerp(velocity, 0.2)
-                                    
-                                    local predictionFactor = isHighMob and 0.12 or 0.06
-                                    if smoothedVelocity.Magnitude > 1.5 then
-                                        finalTargetPos = finalTargetPos + (smoothedVelocity * predictionFactor)
-                                    end
-                                    
-                                    -- 2. SHIELD OFFSET (Right + Up)
-                                    if isShield then
-                                        finalTargetPos = finalTargetPos + (currentCF.RightVector * aimRightOffset) + (currentCF.UpVector * aimUpOffset)
-                                    end
-
-                                    -- 3. BACK AIM LOGIC (New)
-                                    if isFacingAway then
-                                        -- Aim slightly "towards" the player to ensure back hit registration
-                                        finalTargetPos = finalTargetPos - (currentCF.LookVector * 0.4)
-                                    end
-                                    
-                                    -- 4. ADAPTIVE SMOOTHING (Fine-tuned for stability)
-                                    local velocityMag = smoothedVelocity.Magnitude
-                                    local adaptiveSmooth = aimSmoothness
-                                    
-                                    if velocityMag > 5 then
-                                        -- Gradually increase speed but stay within stable limits
-                                        local speedMult = math.clamp(velocityMag / 10, 1.2, 2.0)
-                                        adaptiveSmooth = math.clamp(aimSmoothness * speedMult, 0.05, 0.6)
-                                    end
-                                    
-                                    local targetCF = CFrame.new(currentCF.Position, finalTargetPos)
-                                    Camera.CFrame = currentCF:Lerp(targetCF, adaptiveSmooth)
-                end
-            end
-        end
-    end)
-
-    createToggle(CombatTab, "Aim Bot", false, function(state)
-        aimEnabled = state
-    end)
-
-    -- ====================
-    -- CATEGORY: VISUALS
-    -- ====================
-
-    -- 1. Player ESP
-    -- 1. Player ESP (Optimized Highlight Manager)
-    local espEnabled = false
-    local espContainer = Instance.new("Folder")
-    espContainer.Name = "ExaminationESP"
-    espContainer.Parent = CoreGui
-
-    local potentialPlayerTargets = {}
-
-    local function clearESP() 
-        espContainer:ClearAllChildren() 
-        potentialPlayerTargets = {}
-    end
-
-    local staffCache = {}
-    local staffCheckDebounce = {}
-
-
-    local function managePlayerHighlights()
-        while espEnabled do
-            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                task.wait(1)
-                continue
-            end
-            
-            local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-            
-            for player, _ in pairs(potentialPlayerTargets) do
-                if not player or not player.Parent then 
-                    potentialPlayerTargets[player] = nil
-                    staffCache[player] = nil
-                    continue 
-                end
-                
-                local char = player.Character
-                if not char or not char:IsDescendantOf(game) then 
-                    continue 
-                end
-                
-                local root = char:FindFirstChild("HumanoidRootPart")
-                if not root then continue end
-
-                -- STAFF CHECK
-                local isStaff = staffCache[player]
-                if isStaff == nil and not staffCheckDebounce[player] then
-                    staffCheckDebounce[player] = true
-                    task.spawn(function()
-                        local s, _ = detectStaff(player)
-                        staffCache[player] = s or false
-                        staffCheckDebounce[player] = nil
-                    end)
-                end
-                
-                local dist = (root.Position - myPos).Magnitude
-                local hl = char:FindFirstChild("ESPHighlight")
-                
-                -- SLOT MANAGEMENT: Only highlight if < 150 studs (UNLESS STAFF)
-                if dist < 150 or isStaff then
-                    if not hl then
-                        hl = Instance.new("Highlight")
-                        hl.Name = "ESPHighlight"
-                        hl.Adornee = char
-                        hl.FillTransparency = 1 -- Outline only
-                        hl.OutlineTransparency = 0
-                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        hl.Parent = char 
-                        
-                        -- Failsafe Cleanup
-                        char.AncestryChanged:Connect(function()
-                            if not char:IsDescendantOf(game) and hl then hl:Destroy() end
-                        end)
-                    end
-
-                    -- UPDATE COLOR
-                    local isInfected = isPlayerInfected(player)
-                    
-                    local teamName = player.Team and string.lower(player.Team.Name) or ""
-                    
-                    if isStaff then
-                        hl.FillColor = Color3.fromRGB(255, 0, 255) -- Purple
-                        hl.OutlineColor = Color3.fromRGB(255, 0, 255)
-                    elseif isInfected then
-                        hl.FillColor = Color3.fromRGB(255, 170, 0) -- Orange (User Request)
-                        hl.OutlineColor = Color3.fromRGB(255, 170, 0)
-                        hl.FillTransparency = 1 
-                    elseif string.find(teamName, "menlo") then -- Menlo Team (Humans)
-                        hl.FillColor = Color3.fromRGB(0, 150, 255) -- Blue
-                        hl.OutlineColor = Color3.fromRGB(0, 150, 255)
-                    else
-                        -- Optional: Other teams (Spectator/Lobby) can have a different color or be hidden
-                        hl.FillColor = Color3.fromRGB(150, 150, 150) -- Gray for others
-                        hl.OutlineColor = Color3.fromRGB(150, 150, 150)
-                    end
-                else
-                    -- Too far, free up the slot for Bosses/Nearby Enemies
-                    if hl then hl:Destroy() end
-                end
-            end
-            task.wait(0.2)
-        end
-    end
-
-    local function addESP(player)
-        if player == LocalPlayer then return end
-        potentialPlayerTargets[player] = true
-    end
-
-    createToggle(VisualsTab, "Player ESP", false, function(state)
-        espEnabled = state
-        if state then
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer then addESP(plr) end
-            end
-            Players.PlayerAdded:Connect(function(plr)
-                if espEnabled and plr ~= LocalPlayer then addESP(plr) end
-            end)
-            task.spawn(managePlayerHighlights)
-        else
-            clearESP()
-            -- Loop handles cleanup of individual highlights next cycle or manually here if needed
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
-                    plr.Character.ESPHighlight:Destroy()
-                end
-            end
-        end
-    end)
-
-    -- 2. Infect ESP (Enemies) - Optimized Distance Limit
-    local infectEspEnabled = false
-    local infectEspContainer = Instance.new("Folder")
-    infectEspContainer.Name = "InfectESP"
-    infectEspContainer.Parent = CoreGui
-
-    -- Track Potential Enemies for ESP
-    local potentialEspTargets = {} 
-
-    local function clearInfectESP() 
-        infectEspContainer:ClearAllChildren() 
-        -- Manual Cleanup because Highlights are now parented to Models
-        for model, _ in pairs(potentialEspTargets) do
-            if model and model:FindFirstChild("InfectHighlight") then
-                model.InfectHighlight:Destroy()
-            end
-        end
-        potentialEspTargets = {}
-    end
-
-    local function manageInfectHighlights()
-        local printedBossDebug = {} -- Debounce for debug prints
-        
-        while infectEspEnabled do
-            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                task.wait(1)
-                continue
-            end
-            
-            local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-            
-            for model, _ in pairs(potentialEspTargets) do
-            if not model.Parent or not model:IsDescendantOf(workspace) then 
-                potentialEspTargets[model] = nil 
-                local highlight = model:FindFirstChild("InfectHighlight")
-                if highlight then pcall(function() highlight:Destroy() end) end
-                continue 
-            end
-
-            -- STRICT FAILSAFE: Remove Self and Players (Players are handled by Player ESP)
-            local isPlr = Players:GetPlayerFromCharacter(model)
-            if model == LocalPlayer.Character or model.Name == LocalPlayer.Name or isPlr then
-                potentialEspTargets[model] = nil
-                local highlight = model:FindFirstChild("InfectHighlight")
-                if highlight then pcall(function() highlight:Destroy() end) end
-                continue
-            end
-                
-                local root = model:FindFirstChild("HumanoidRootPart")
-                -- Prioritize Living Humanoid (Fix for Resurrection/Duplicate Humanoids)
-                local humanoid = nil
-                local firstHum = nil
-                for _, child in ipairs(model:GetChildren()) do
-                    if child:IsA("Humanoid") then
-                        if not firstHum then firstHum = child end
-                        if child.Health > 0 then
-                            humanoid = child
-                            break
-                        end
-                    end
-                end
-                humanoid = humanoid or firstHum
-                
-                -- SKIP DEAD/INVALID 
-            local velocityMag = root and root.Velocity.Magnitude or 0
-            local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead) or (humanoid.Parent == nil)
-            
-            -- NEW: Downed/Ragdoll Check (Keep ESP during pushes/knockdowns)
-            local modelName = string.lower(model.Name)
-            local isSleeping = false
-            for _, name in ipairs(sleepingEnemies) do
-                if string.find(modelName, name) then isSleeping = true break end
-            end
-
-            local isDowned = humanoid.PlatformStand or 
-                            (humanoid:GetState() == Enum.HumanoidStateType.FallingDown) or 
-                            (humanoid:GetState() == Enum.HumanoidStateType.Ragdoll) or
-                            (humanoid:GetState() == Enum.HumanoidStateType.Physics)
-
-            -- SKIP DEAD/INVALID (Priority Logic)
-            if isDead then
-                local highlight = model:FindFirstChild("InfectHighlight")
-                if highlight then pcall(function() highlight:Destroy() end) end
-                
-                -- Remove from tracking list if settled (no longer moving)
-                if velocityMag < 1 then
-                    potentialEspTargets[model] = nil
-                end
-                continue
-            end
-
-                if root then
-                    local dist = (root.Position - myPos).Magnitude
-                    
-                    -- Distance Sanity Check (Don't remove Boss/Whitelisted ESP even if close)
-                    if not (isBoss or isSleeping) and dist < 2 then 
-                        potentialEspTargets[model] = nil 
-                        local highlight = model:FindFirstChild("InfectHighlight")
-                        if highlight then highlight:Destroy() end
-                        continue
-                    end
-
-                    -- GET CACHED METADATA
-                    local meta = entityCache[model]
-                    local isBoss = meta and meta.isBoss or false
-                    local isElite = meta and meta.elite or false
-
-                    local maxDist = isBoss and 2000 or 150 -- Bosses have near infinite range
-
-                    local highlight = model:FindFirstChild("InfectHighlight")
-                    
-                    if dist < maxDist then
-                        local hl = highlight
-                        if not hl then
-                            -- Create Highlight
-                            hl = Instance.new("Highlight")
-                            hl.Name = "InfectHighlight"
-                            hl.Adornee = model
-                            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                            hl.FillTransparency = 0.85
-                            hl.OutlineTransparency = 0
-                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            hl.Parent = model
-                        end
-
-                        -- DYNAMIC STYLE UPDATE (Boss = Purple, Elite = Orange, Default = Red Outline)
-                        if isBoss then
-                            hl.FillColor = Color3.fromRGB(130, 0, 255)
-                            hl.OutlineColor = Color3.fromRGB(200, 100, 255)
-                            hl.FillTransparency = 1 -- Outline only
-                        elseif isElite then
-                            hl.FillColor = Color3.fromRGB(255, 140, 0) -- Orange
-                            hl.OutlineColor = Color3.fromRGB(255, 200, 0) -- Brighter Orange Outline
-                            hl.FillTransparency = 1 -- Outline only
-                        else
-                            hl.FillColor = Color3.fromRGB(255, 0, 0)
-                            hl.OutlineColor = Color3.fromRGB(255, 0, 0)
-                            hl.FillTransparency = 1 -- Outline only
-                        end
-                    else
-                        -- Too far, remove highlight to save rendering slots
-                        if highlight then highlight:Destroy() end
-                    end
-                end
-            end
-            task.wait(0.1) -- Fast Update (10 times a second for instant kill feedback)
-        end
-    end
-
-    local function addInfectESP(model)
-        if not infectEspEnabled then return end
-    if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return end
-    if Players:GetPlayerFromCharacter(model) or Players:FindFirstChild(model.Name) then return end
-        
-        local humanoid = model:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return end
-        
-        if Camera.CameraSubject == humanoid then return end
-
-        -- SMART FILTER (Event-Driven)
-        local root = model:FindFirstChild("HumanoidRootPart")
-        if not root then return end
-
-        local function isValidEnemy()
-            -- 0. Strict Self Check & Player Check
-            if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
-            if Players:GetPlayerFromCharacter(model) or Players:FindFirstChild(model.Name) then return false end
-
-            -- 0.1 Name Blacklist (Prop filter)
-            if isNPCBlacklisted(model.Name) then return false end
-            
-            -- 0.2 Statue/Decoration Filter (IMPORTANT FIX)
-            -- Check if it's anchored OR inside a map/decoration folder
-            local isSleeping = false
-            local lowName = string.lower(model.Name)
-            for _, sName in ipairs(sleepingEnemies) do
-                if string.find(lowName, sName) then
-                    isSleeping = true
-                    break
-                end
-            end
-
-            local parentName = model.Parent and string.lower(model.Parent.Name) or ""
-            local isMapObject = string.find(parentName, "decor") or string.find(parentName, "map") or string.find(parentName, "statue") or string.find(parentName, "prop")
-
-            if (root.Anchored or isMapObject) and not isSleeping then 
-                return false 
-            end
-            
-            -- 0.3 Target Check (Now safe from statues)
-            local targetData = getTargetData(model.Name)
-            if targetData then return true end
-
-            -- 1. Default: If it's a valid humanoid NPC (non-player), show it
-            return true
-        end
-
-        local function tryAdd()
-            if isValidEnemy() then
-                if not potentialEspTargets[model] then
-                    potentialEspTargets[model] = true
-                end
-            end
-        end
-
-        if isValidEnemy() then
-            tryAdd()
-        else
-            -- Listen for state changes (Anchored -> Unanchored)
-            local anchorConn
-            anchorConn = root:GetPropertyChangedSignal("Anchored"):Connect(function()
-                if not root.Anchored then
-                    tryAdd()
-                    if anchorConn then anchorConn:Disconnect() anchorConn = nil end
-                end
-            end)
-            
-            model.AncestryChanged:Connect(function()
-                if not model:IsDescendantOf(game) then
-                    if anchorConn then anchorConn:Disconnect() end
-                end
-            end)
-        end
-        
-        -- Standard Cleanup for valid targets is handled in the main loop or AncestryChanged above
-        model.AncestryChanged:Connect(function()
-            if not model:IsDescendantOf(game) then 
-                potentialEspTargets[model] = nil
-            end
-        end)
-    end
-
-    createToggle(VisualsTab, "Infected ESP", false, function(state)
-        infectEspEnabled = state
-        
-        if state then
-            -- STAGGERED INITIAL SCAN (Prevents Crash)
-            task.spawn(function()
-                local allDesc = workspace:GetDescendants()
-                local count = 0
-                for _, obj in ipairs(allDesc) do
-                    if not infectEspEnabled then break end -- Stop if toggled off
-                    
-                    -- 1. Infected Check
-                    if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
-                        addInfectESP(obj)
-                    end
-                    
-                    count = count + 1
-                    if count >= 300 then -- Process 300 items then pause
-                        count = 0
-                        task.wait() -- Move to next frame/cycle
-                    end
-                end
-            end)
-            -- Start Management Loops
-            task.spawn(manageInfectHighlights)
-        else
-            clearInfectESP()
-        end
-    end)
-
-    -- 1.1 Anti Staff (Moved here)
-    createToggle(LocalTab, "Anti Staff", false, function(state)
-        antiStaffEnabled = state
-        antiStaffAutoLeave = state -- Combined: Enabling detection also enables auto-leave
-        antiStaffGroupId = 34159688 -- Hardcoded for this game
-        
-        if state then
-            -- Check existing players
-            for _, plr in ipairs(Players:GetPlayers()) do
-                local isStaff, reason = detectStaff(plr)
-                if isStaff then handleStaffDetection(plr, reason) end
-            end
-        end
-    end)
-
-    workspace.DescendantAdded:Connect(function(obj)
-        if not infectEspEnabled then return end
-        -- Remove fixed wait, handling individual component additions is better
-        if not obj.Parent then return end
-        
-        -- 1. Catch MODEL Added (If complete)
-        if obj:IsA("Model") then
-            task.wait(0.1) -- Give it a moment for children
-            addInfectESP(obj)
-        
-        -- 2. Catch HUMANOID Added (The reliable trigger)
-        elseif obj:IsA("Humanoid") then
-            addInfectESP(obj.Parent)
-        
-        -- 3. Catch ROOT PART Added (Another reliable trigger)
-        elseif obj.Name == "HumanoidRootPart" then
-            addInfectESP(obj.Parent)
-        end
-    end)
-
-    -- 4. Aggressive Mouse Unlock (Shift Lock Fix)
-    local mouseOverrideConnection = RunService.RenderStepped:Connect(function()
-        if not ScreenGui.Parent then 
-            if mouseOverrideConnection then mouseOverrideConnection:Disconnect() end
-            return 
-        end
-        
-        if MainFrame.Visible then
-            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-            UserInputService.MouseIconEnabled = true
-            
-            -- Also ensure the modal fix is sized correctly just in case
-            local modal = MainFrame:FindFirstChild("ModalFix")
-            if modal then modal.Size = UDim2.new(1, 0, 1, 0) end
-        end
-    end)
-
-    -- Connections are managed at the top of the script now
-
-    -- [ CLEANUP LOGIC ]
-    local function cleanupGUI()
-        if mouseOverrideConnection then
-            mouseOverrideConnection:Disconnect()
-            mouseOverrideConnection = nil
-        end
-        
-        if mainInputConn then
-            mainInputConn:Disconnect()
-            mainInputConn = nil
-        end
-        
-        if fullBrightConnection then 
-            fullBrightConnection:Disconnect() 
-            fullBrightConnection = nil
-            Lighting.Brightness = 1
-            Lighting.GlobalShadows = true
-            Lighting.OutdoorAmbient = Color3.fromRGB(127, 127, 127)
-        end
-        
-        espEnabled = false
-        infectEspEnabled = false
-        aimEnabled = false
-        flyEnabled = false
-        
-        
-        if espContainer then espContainer:Destroy() end
-        if infectEspContainer then infectEspContainer:Destroy() end
-        
-        -- MANUAL ESP CLEANUP (Since we parent highlights to characters now)
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
-                plr.Character.ESPHighlight:Destroy()
-            end
-        end
-        
-        clearInfectESP()
-        
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr.Character then
-                if plr.Character:FindFirstChild("Head") and plr.Character.Head:FindFirstChild("ESPTest") then
-                    plr.Character.Head.ESPTest:Destroy()
-                end
-                if plr.Character:FindFirstChild("ESPTestHighlight") then
-                    plr.Character.ESPTestHighlight:Destroy()
-                end
-            end
-        end
-        
-        stopFly()
-        
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = 16
-            -- Reset collisions on GUI close
-            for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    -- WHITELIST: Only restore collision for CORE parts
-                    local restoreList = {
-                        ["Head"] = true,
-                        ["HumanoidRootPart"] = true,
-                        ["Torso"] = true,
-                        ["UpperTorso"] = true,
-                        ["LowerTorso"] = true
-                    }
-                    if restoreList[part.Name] then
-                        part.CanCollide = true 
-                    end
-                end
-            end
-        end
-        
-        if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
-    end
-
-    CloseButton.MouseButton1Click:Connect(function()
-        ScreenGui:Destroy()
-        cleanupGUI()
-    end)
-
-    ScreenGui.AncestryChanged:Connect(function()
-        if not ScreenGui:IsDescendantOf(game) then
+        CloseButton.MouseButton1Click:Connect(function()
+            ScreenGui:Destroy()
             cleanupGUI()
-        end
-    end)
+        end)
 
-    -- [ TOGGLE ALL KEYBIND ]
-    mainInputConn = UserInputService.InputBegan:Connect(function(input, gpe)
-        if input.KeyCode == Enum.KeyCode.RightControl and not gpe then
-            if MainFrame.Visible then
-                MainFrame.Visible = false
-                OpenButton.Visible = true
-            else
-                MainFrame.Visible = true
-                OpenButton.Visible = false
+        ScreenGui.AncestryChanged:Connect(function()
+            if not ScreenGui:IsDescendantOf(game) then
+                cleanupGUI()
             end
-        end
-    end)
+        end)
+
+        -- [ TOGGLE ALL KEYBIND ]
+        mainInputConn = UserInputService.InputBegan:Connect(function(input, gpe)
+            if input.KeyCode == Enum.KeyCode.RightControl and not gpe then
+                if MainFrame.Visible then
+                    MainFrame.Visible = false
+                    OpenButton.Visible = true
+                else
+                    MainFrame.Visible = true
+                    OpenButton.Visible = false
+                end
+            end
+        end)
 

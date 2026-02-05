@@ -281,11 +281,11 @@
         OpenButton.Name = "OpenButton"
         OpenButton.Size = UDim2.new(0, 50, 0, 50)
         OpenButton.Position = UDim2.new(0, 10, 0.5, -25)
-        OpenButton.BackgroundColor3 = THEME.Accent
-        OpenButton.TextColor3 = THEME.Text
-        OpenButton.Text = "Open"
+        OpenButton.BackgroundColor3 = Color3.fromRGB(45, 45, 50) -- Elegant Gray
+        OpenButton.Text = "≡" -- Hamburger Menu Symbol
+        OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        OpenButton.TextSize = 30
         OpenButton.Font = Enum.Font.GothamBold
-        OpenButton.TextSize = 14
         OpenButton.Visible = false -- Hidden by default
         OpenButton.Parent = ScreenGui
 
@@ -293,9 +293,46 @@
         OpenCorner.CornerRadius = UDim.new(1, 0)
         OpenCorner.Parent = OpenButton
 
+        local OpenStroke = Instance.new("UIStroke")
+        OpenStroke.Thickness = 2
+        OpenStroke.Color = Color3.fromRGB(255, 255, 255)
+        OpenStroke.Transparency = 0.5
+        OpenStroke.Parent = OpenButton
+
         OpenButton.MouseButton1Click:Connect(function()
+            -- Only open if it wasn't a significant drag
             MainFrame.Visible = true
             OpenButton.Visible = false
+        end)
+
+        -- [ OPENBUTTON DRAGGING LOGIC ]
+        local bDragging, bDragInput, bDragStart, bStartPos
+        
+        OpenButton.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                bDragging = true
+                bDragStart = input.Position
+                bStartPos = OpenButton.Position
+                
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        bDragging = false
+                    end
+                end)
+            end
+        end)
+
+        OpenButton.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                bDragInput = input
+            end
+        end)
+
+        RunService.RenderStepped:Connect(function()
+            if bDragging and bDragInput then
+                local delta = bDragInput.Position - bDragStart
+                OpenButton.Position = UDim2.new(bStartPos.X.Scale, bStartPos.X.Offset + delta.X, bStartPos.Y.Scale, bStartPos.Y.Offset + delta.Y)
+            end
         end)
 
         -- 4. Minimize Button (-)

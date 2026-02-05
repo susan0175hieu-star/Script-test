@@ -6,6 +6,7 @@
         local Lighting = game:GetService("Lighting")    
         local TeleportService = game:GetService("TeleportService")
         local Teams = game:GetService("Teams")
+        local VirtualInputManager = game:GetService("VirtualInputManager")
 
         -- [ VARIABLES ]
         local LocalPlayer = Players.LocalPlayer
@@ -26,6 +27,7 @@
         local antiStaffGroupId = 34159688 -- Specific Game Group ID
         local detectedStaff = {}
         local mainInputConn = nil
+        local autoQteEnabled = false
 
         local friendlyPlayers = {} -- No longer needs priority tracking, automated below
 
@@ -130,7 +132,7 @@
         end
 
         -- [ UI CONFIGURATION ]
-        local RESX, RESY = 900, 300 -- Compact Height for 3 columns
+        local RESX, RESY = 850, 320 -- More compact and elegant width
         local THEME = {
             Background = Color3.fromRGB(30, 30, 35),
             Header = Color3.fromRGB(25, 25, 30),
@@ -442,6 +444,25 @@
             return Page
         end
 
+        local function createLabel(page, text)
+            local Label = Instance.new("TextLabel")
+            Label.Size = UDim2.new(1, 0, 0, 35) -- Increased height to allow wrapping
+            Label.BackgroundTransparency = 1
+            Label.Text = text
+            Label.TextColor3 = THEME.Description
+            Label.Font = Enum.Font.Gotham
+            Label.TextSize = 12
+            Label.TextXAlignment = Enum.TextXAlignment.Left
+            Label.TextWrapped = true
+            Label.Parent = page
+            
+            local UIPad = Instance.new("UIPadding")
+            UIPad.PaddingLeft = UDim.new(0, 10)
+            UIPad.Parent = Label
+            
+            return Label
+        end
+
         local function createToggle(page, text, default, callback)
             local Frame = Instance.new("Frame")
             Frame.Size = UDim2.new(1, 0, 0, 40)
@@ -731,19 +752,12 @@
             end)
         end
 
-        local toggleFly = createToggleInput(LocalTab, "Fly Mode (F)", 50, false, function(val, state)
+        local toggleFly = createToggleInput(LocalTab, "Fly Mode", 50, false, function(val, state)
             flySpeed = val
             flyEnabled = state
             if flyEnabled then startFly() else stopFly() end
         end)
 
-        -- Keybind for Fly (F)
-        UserInputService.InputBegan:Connect(function(input, gpe)
-            if gpe then return end
-            if input.KeyCode == Enum.KeyCode.F then
-                toggleFly(nil, not flyEnabled)
-            end
-        end)
 
         -- 3. FullBright
         local fullBrightConnection = nil
@@ -811,6 +825,66 @@
                             end
                         end
                     end
+                end
+            end
+        end)
+
+
+        task.spawn(function()
+            local qteKeywords = {"struggle", "interaction", "qte", "minigame", "snap", "action", "prompt", "interact", "controller"}
+            
+            while true do
+                task.wait(0.02) -- Quét cực nhanh để không lỡ nhịp (50 lần/giây)
+                if autoQteEnabled then
+                    pcall(function()
+                        -- Lấy kích thước màn hình để tính vùng trung tâm
+                        local screenCenter = Camera.ViewportSize / 2
+                        
+                        for _, v in ipairs(LocalPlayer.PlayerGui:GetDescendants()) do
+                            if v:IsA("TextLabel") and v.Visible and v.TextTransparency < 0.3 then
+                                -- 1. Kiểm tra vị trí (Chỉ lấy các nút ở vùng giữa màn hình - bán kính 300 pixel)
+                                local pos = v.AbsolutePosition + (v.AbsoluteSize / 2)
+                                local distFromCenter = (pos - screenCenter).Magnitude
+                                
+                                if distFromCenter < 350 then
+                                    -- 2. Kiểm tra từ khóa GUI (Hoặc Folder chứa QTE)
+                                    local screenGui = v:FindFirstAncestorOfClass("ScreenGui")
+                                    local sgName = screenGui and screenGui.Name:lower() or ""
+                                    local isProbablyQTE = false
+                                    
+                                    for _, keyword in ipairs(qteKeywords) do
+                                        if string.find(sgName, keyword) then
+                                            isProbablyQTE = true
+                                            break
+                                        end
+                                    end
+                                    
+                                    -- Nếu không tìm thấy từ khóa nhưng ở GIỮA màn hình và chỉ có 1 chữ, vẫn coi là QTE
+                                    local txt = v.Text:upper():gsub("%s+", "")
+                                    if (isProbablyQTE or distFromCenter < 200) and #txt == 1 and txt:match("[A-Z]") then
+                                        -- 3. Kiểm tra độ hiển thị thực tế
+                                        local isVisible = true
+                                        local p = v.Parent
+                                        while p and p:IsA("GuiObject") do
+                                            if not p.Visible then isVisible = false break end
+                                            p = p.Parent
+                                        end
+                                        
+                                        if isVisible then
+                                            local key = Enum.KeyCode[txt]
+                                            if key then
+                                                -- Bấm phím
+                                                VirtualInputManager:SendKeyEvent(true, key, false, game)
+                                                task.wait(0.01)
+                                                VirtualInputManager:SendKeyEvent(false, key, false, game)
+                                                task.wait(0.15) -- Nghỉ ngắn để chờ phím thứ 2 xuất hiện
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end)
                 end
             end
         end)
@@ -1583,8 +1657,6 @@
 
                     -- MONSTER DETECTION
                     -- If it's not an active player character, it's a monster (Red ESP)
-                    local isFriendlyNPC = false
-                    -- (Removed the name-matching loop that was protecting uncontrollable monsters)
 
                     -- STATUS CHECKS
                     local velocityMag = root and root.Velocity.Magnitude or 0
@@ -1608,14 +1680,14 @@
                         local dist = (root.Position - myPos).Magnitude
                         
                         -- Distance Sanity Check: Remove if dead and close (except players)
-                        if isDead and dist < 2 and not isFriendlyNPC then 
+                        if isDead and dist < 2 then 
                             potentialEspTargets[model] = nil 
                             local highlight = model:FindFirstChild("InfectHighlight")
                             if highlight then highlight:Destroy() end
                             continue
                         end
 
-                        local maxDist = (isBoss or isFriendlyNPC) and 2000 or 150
+                        local maxDist = (isBoss) and 2000 or 150
                         local highlight = model:FindFirstChild("InfectHighlight")
                         
                         if dist < maxDist then
@@ -1630,11 +1702,7 @@
                                 hl.Parent = model
                             end
 
-                            if isFriendlyNPC then
-                                hl.FillColor = Color3.fromRGB(0, 255, 0) -- Green for friends
-                                hl.OutlineColor = Color3.fromRGB(0, 255, 0)
-                                hl.FillTransparency = 1 
-                            elseif isBoss then
+                            if isBoss then
                                 hl.FillColor = Color3.fromRGB(130, 0, 255)
                                 hl.OutlineColor = Color3.fromRGB(200, 100, 255)
                                 hl.FillTransparency = 1 
@@ -1768,6 +1836,12 @@
                 clearInfectESP()
             end
         end)
+
+        -- 5. Auto QTE Toggle (Moved to Visuals)
+        createToggle(VisualsTab, "Auto QTE  [ Stop NeckHurt ] :)", false, function(state)
+            autoQteEnabled = state
+        end)
+        createLabel(VisualsTab, "Turn this ON When You Become a Controllable Infected.")
 
         -- 1.1 Anti Staff (Moved here)
         createToggle(LocalTab, "Anti Staff", false, function(state)
@@ -1921,3 +1995,4 @@
             end
         end)
 
+    

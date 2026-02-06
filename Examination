@@ -1062,6 +1062,13 @@
 
 
 
+                -- [ AUTO DISABLE TP ON DEATH/RESPAWN ]
+                LocalPlayer.CharacterAdded:Connect(function()
+                    if getgenv().ThirdPersonUpdate_Active and getgenv().TP_Toggle_Func then
+                        getgenv().TP_Toggle_Func(false)
+                    end
+                end)
+
                 -- 3. FullBright
                 local fullBrightConnection = nil
                 createToggle(VisualsTab, "FullBright", false, function(state)
@@ -1143,7 +1150,10 @@
                                 -- Lấy kích thước màn hình để tính vùng trung tâm
                                 local screenCenter = Camera.ViewportSize / 2
                                 
-                                for _, v in ipairs(LocalPlayer.PlayerGui:GetDescendants()) do
+                                -- OPTIMIZED SCAN: Only check ENABLED ScreenGuis
+                                for _, gui in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+                                    if gui:IsA("ScreenGui") and gui.Enabled then
+                                        for _, v in ipairs(gui:GetDescendants()) do
                                     if v:IsA("TextLabel") and v.Visible and v.TextTransparency < 0.3 then
                                         -- 1. Kiểm tra vị trí (Chỉ lấy các nút ở vùng giữa màn hình - bán kính 300 pixel)
                                         local pos = v.AbsolutePosition + (v.AbsoluteSize / 2)
@@ -1184,10 +1194,12 @@
                                                     end
                                                 end
                                             end
-                                        end
                                     end
                                 end
-                            end)
+                            end
+                        end
+                    end 
+                end)
                         end
                     end
                 end)
@@ -1891,13 +1903,13 @@
                             
                             -- SLOT MANAGEMENT: Only highlight if < 150 studs (UNLESS STAFF)
                             
-                            if dist < 150 or isStaff then
+                            if dist < 90 or isStaff then
                                 if not hl then
                                     hl = Instance.new("Highlight")
                                     hl.Name = "ESPHighlight"
                                     hl.Adornee = char
                                     hl.FillTransparency = 1 -- Outline only
-                                    hl.OutlineTransparency = 0
+                                    hl.OutlineTransparency = 0.7
                                     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                                     hl.Parent = char 
                                     
@@ -2077,7 +2089,7 @@
                                     continue
                                 end
 
-                                local maxDist = (isBoss) and 2000 or 150
+                                local maxDist = (isBoss) and 2000 or 90
                                 local highlight = model:FindFirstChild("InfectHighlight")
                                 
                                 if dist < maxDist then
@@ -2086,8 +2098,8 @@
                                         hl = Instance.new("Highlight")
                                         hl.Name = "InfectHighlight"
                                         hl.Adornee = model
-                                        hl.FillTransparency = 0.85
-                                        hl.OutlineTransparency = 0
+                                        hl.FillTransparency = 1
+                                        hl.OutlineTransparency = 0.7
                                         hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                                         hl.Parent = model
                                     end
@@ -2110,7 +2122,7 @@
                                 end
                             end
                         end
-                        task.wait(0.1) -- Fast Update (10 times a second for instant kill feedback)
+                        task.wait(0.2) -- Fast Update (Matched to Player ESP for performance)
                     end
                 end
 

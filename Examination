@@ -11,6 +11,15 @@
             -- [ VARIABLES ]
             local LocalPlayer = Players.LocalPlayer
             local Camera = workspace.CurrentCamera
+            
+            -- [ CLEANUP OLD INSTANCES ]
+            -- Force remove crosshair from previous execution loops
+            if getgenv().TP_Crosshair and getgenv().TP_Crosshair.Parent then
+                 getgenv().TP_Crosshair:Destroy()
+                 getgenv().TP_Crosshair = nil
+            end
+            local oldGui = CoreGui:FindFirstChild("TP_Crosshair_GUI")
+            if oldGui then oldGui:Destroy() end
 
             -- [ SETTINGS ]
             local walkSpeed = 24
@@ -718,6 +727,7 @@
             local LocalTab = createColumn("Players")
             local CombatTab = createColumn("Combat")
             local VisualsTab = createColumn("Visuals")
+            local MiscTab = createColumn("Misc")
 
             -- ====================
             -- CATEGORY: LOCAL PLAYER
@@ -899,11 +909,27 @@
                         local camRot = Camera.CFrame.Rotation
                         
                         -- Calculate intended position relative to RAW HRP (No smoothing lag)
-                        local offsetVector = Vector3.new(tpOffsetX, tpOffsetY, 0)
+                        -- DYNAMIC AIM OFFSET (Right Click logic)
+                        local isAimingRightClick = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                        
+                        -- Target Values
+                        local targetOffsetX = tpOffsetX 
+                        local targetOffsetY = isAimingRightClick and (tpOffsetY - 0.2) or tpOffsetY
+                        local targetDist    = isAimingRightClick and 2.5 or 4
+                        
+                        -- Smooth Transition (Lerp) - stored in valid scope
+                        getgenv().currentTP_X = math.lerp(getgenv().currentTP_X or tpOffsetX, targetOffsetX, 0.15)
+                        getgenv().currentTP_Y = math.lerp(getgenv().currentTP_Y or tpOffsetY, targetOffsetY, 0.15)
+                        getgenv().currentTP_Dist = math.lerp(getgenv().currentTP_Dist or 4, targetDist, 0.15)
+                        
+                        -- Apply FOV (Fixed at 70)
+                        Camera.FieldOfView = 70
+                        
+                        local offsetVector = Vector3.new(getgenv().currentTP_X, getgenv().currentTP_Y, 0)
                         local desiredPos = hrp.Position + (camRot * offsetVector)
                         
                         -- Apply Backwards Zoom (Distance)
-                        desiredPos = desiredPos - (camRot.LookVector * 4) 
+                        desiredPos = desiredPos - (camRot.LookVector * getgenv().currentTP_Dist) 
                         
                         -- Set Camera CFrame Instantly
                         Camera.CFrame = CFrame.new(desiredPos) * camRot
@@ -990,8 +1016,12 @@
                     LocalPlayer.CameraMode = Enum.CameraMode.LockFirstPerson
                     LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
                     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+                    
+
                 end
             end)
+            
+
             
 
 
@@ -1835,9 +1865,22 @@
                                 hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                                 hl.Parent = char 
                                 
-                                -- Failsafe Cleanup
-                                char.AncestryChanged:Connect(function()
-                                    if not char:IsDescendantOf(game) and hl then hl:Destroy() end
+                                -- Failsafe Cleanup & Death Event
+                                local ancestryConn
+                                local deathConn
+                                
+                                ancestryConn = char.AncestryChanged:Connect(function()
+                                    if not char:IsDescendantOf(game) then 
+                                        if hl then hl:Destroy() end
+                                        if deathConn then deathConn:Disconnect() end
+                                        if ancestryConn then ancestryConn:Disconnect() end
+                                    end
+                                end)
+                                
+                                deathConn = humanoid.Died:Connect(function()
+                                    if hl then hl:Destroy() end
+                                    if ancestryConn then ancestryConn:Disconnect() end
+                                    if deathConn then deathConn:Disconnect() end
                                 end)
                             end
 
@@ -2153,6 +2196,120 @@
                 autoQteEnabled = state
             end)
             createLabel(VisualsTab, "Turn this ON When You Become a Controllable Infected.")
+            
+            -- ====================
+            -- CATEGORY: MISC
+            -- ====================
+            local badgeEnabled = false
+            createToggle(MiscTab, "Unlock All Badges (Story)", false, function(state)
+                badgeEnabled = state
+                if state then
+                    task.spawn(function()
+                        game:GetService("StarterGui"):SetCore("SendNotification", {
+                            Title = "Story Sequence",
+                            Text = "Starting Automated Badge Run...",
+                            Duration = 5
+                        })
+                        
+                        local function teleportAndLock(targetCF)
+                            local char = LocalPlayer.Character
+                            local root = char and char:FindFirstChild("HumanoidRootPart")
+                            if root then
+                                root.Anchored = true
+                                local t = tick()
+                                while tick() - t < 0.6 do
+                                    root.CFrame = targetCF
+                                    root.Velocity = Vector3.new(0,0,0)
+                                    workspace.CurrentCamera.CFrame = targetCF * CFrame.new(0, 1.5, 0)
+                                    task.wait()
+                                end
+                                root.Anchored = false
+                                task.wait(0.4)
+                            end
+                        end
+
+                        -- MASTER SEQUENCE LIST (Ordered by USER Request: 1 > 3 > Valve > 4 > 5 > 5Buttons > 6 > 7)
+                        local sequence = {
+                            {Name = "Generator 1", CF = CFrame.new(133.743866, -31.0193367, -1227.39185, 0.978941798, 3.64323753e-08, -0.204139531, -4.20299138e-08, 1, -2.30845316e-08, 0.204139531, 3.11783808e-08, 0.978941798)},
+                            {Name = "Generator 3", CF = CFrame.new(-230.119919, -30.9967918, -1428.37756, 0.999673545, -6.07904553e-08, -0.0255500749, 5.93887926e-08, 1, -5.56182655e-08, 0.0255500749, 5.40827187e-08, 0.999673545)},
+                            {Name = "The Valve", CF = CFrame.new(-224.138947, -35.9937668, -1635.21838, 0.0262792036, -9.66153522e-08, -0.999654651, -3.00486143e-08, 1, -9.7438658e-08, 0.999654651, 3.25988481e-08, 0.0262792036)},
+                            {Name = "Generator 4", CF = CFrame.new(-134.475037, -30.9641342, -1144.99475, -0.999912858, 1.38482292e-08, -0.0132037746, 1.51871227e-08, 1, -1.01302092e-07, 0.0132037746, -1.01493782e-07, -0.999912858)},
+                            {Name = "Generator 5", CF = CFrame.new(35.5282593, -10.2273159, -919.895691, 0.993284523, -1.14428822e-08, 0.115697019, 7.16038917e-09, 1, -3.74303326e-08, -0.115697019, 3.6350535e-08, 0.993284523)},
+                            {Name = "Vị Trí 2", CF = CFrame.new(-106.81147, -10.2273159, -856.251831, 0.5079934, -9.68796598e-08, 0.861360967, 7.37851877e-08, 1, 6.89574762e-08, -0.861360967, 2.85257347e-08, 0.5079934), SkipInteract = true},
+                            {Name = "Gen 5 Button 1", CF = CFrame.new(-14.5757637, -10.2273159, -879.981689, -0.999980688, -1.96657512e-09, 0.00620871037, -1.67490344e-08, 1, 4.6983029e-08, -0.00620871037, 4.69717243e-08, -0.999980688)},
+                            {Name = "Gen 5 Button 2", CF = CFrame.new(-19.3710957, -10.2273159, -878.983521, -0.999998748, -2.62712341e-09, 0.00157341466, -2.67471334e-09, 1, -3.0244145e-08, -0.00157341466, -3.02483194e-08, -0.999998748)},
+                            {Name = "Gen 6 Button", CF = CFrame.new(50.3292999, -8.89471245, -1059.40283, -0.998891473, -8.36270928e-08, -0.0470732301, -8.25382926e-08, 1, -2.50737102e-08, 0.0470732301, -2.1160572e-08, -0.998891473)},
+                            {Name = "Vị Trí 1", CF = CFrame.new(-2.5912199, -10.2559547, -1036.73743, 0.999949813, -3.54156775e-08, 0.0100193778, 3.51015998e-08, 1, 3.15228803e-08, -0.0100193778, -3.1169602e-08, 0.999949813), SkipInteract = true},
+                            {Name = "Gen 7 Button", CF = CFrame.new(-35.218502, 0.21124357, -1055.26294, 0.0262498129, 5.8282307e-08, 0.999655426, -3.81598841e-09, 1, -5.82021897e-08, -0.999655426, -2.28687669e-09, 0.0262498129)},
+                            {Name = "Vị Trí 3", CF = CFrame.new(-5.74970484, -10.2273159, -899.413269, 0.0661257729, 2.35660984e-08, -0.997811258, -5.14741174e-08, 1, 2.02065582e-08, 0.997811258, 5.00252817e-08, 0.0661257729), SkipInteract = true}
+                        }
+
+                        for i, step in ipairs(sequence) do
+                            if not badgeEnabled then break end
+                            
+                            game:GetService("StarterGui"):SetCore("SendNotification", {
+                                Title = "Step " .. i .. "/" .. #sequence,
+                                Text = "Moving to: " .. step.Name,
+                                Duration = 2
+                            })
+                            
+                            -- 1. TELEPORT
+                            teleportAndLock(step.CF)
+                            
+                            if step.SkipInteract then
+                                task.wait(0.5)
+                                continue
+                            end
+                            
+                            -- 2. SMART INTERACTION SCAN
+                            local candidates = {}
+                            for _, v in ipairs(workspace:GetDescendants()) do
+                                if v:IsA("ProximityPrompt") or v:IsA("ClickDetector") then
+                                    local part = v.Parent
+                                    if part and part:IsA("BasePart") then
+                                        local vec = part.Position - step.CF.Position
+                                        local dist = vec.Magnitude
+                                        local facing = step.CF.LookVector:Dot(vec.Unit)
+                                        
+                                        if dist < 12 and facing > 0.1 then
+                                            table.insert(candidates, {Obj = v, Part = part, Dist = dist})
+                                        end
+                                    end
+                                end
+                            end
+                            
+                            table.sort(candidates, function(a, b) return a.Dist < b.Dist end)
+                            
+                            if #candidates > 0 then
+                                local best = candidates[1]
+                                workspace.CurrentCamera.CFrame = CFrame.new(step.CF.Position, best.Part.Position)
+                                task.wait(0.2)
+                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                                task.wait(0.1)
+                                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                                if best.Obj:IsA("ProximityPrompt") then
+                                    best.Obj.MaxActivationDistance = 60
+                                    best.Obj.RequiresLineOfSight = false
+                                    fireproximityprompt(best.Obj)
+                                else
+                                    fireclickdetector(best.Obj)
+                                end
+                            else
+                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                                task.wait(0.1)
+                                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                            end
+                            task.wait(1.5)
+                        end
+                        
+                        game:GetService("StarterGui"):SetCore("SendNotification", {
+                            Title = "Sequence Complete",
+                            Text = "All Story interactions handled.",
+                            Duration = 5
+                        })
+                    end)
+                end
+            end)
 
             -- 1.1 Anti Staff (Moved here)
             createToggle(LocalTab, "Anti Staff", false, function(state)

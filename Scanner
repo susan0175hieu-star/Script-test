@@ -1,0 +1,96 @@
+-- [[ INTERACTIVE GAME SCANNER TOOL ]]
+-- Hover over an object and press 'V' to scan it.
+
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+print("Scanner Tool Loaded. Hover over an object and press 'V' to scan details.")
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    -- Allow scanning even if gameProcessed (e.g. clicking on GUI)? 
+    -- User said "point mouse", usually implies check 3D world, but sometimes GUI. 
+    -- Let's stick to 3D world for now as "V" might be typing. 
+    -- Actually, if they are typing in chat, we shouldn't scan.
+    if gameProcessed then return end
+
+    if input.KeyCode == Enum.KeyCode.V then
+        local target = Mouse.Target
+        if target then
+            print("--------------------------------------------------")
+            print("[ SCAN RESULT ]")
+            print("Object: " .. target.Name)
+            print("Class: " .. target.ClassName)
+            print("Path: " .. target:GetFullName())
+            print("Parent: " .. (target.Parent and target.Parent.Name or "N/A"))
+            
+            -- Try to find the Model/Character it belongs to
+            local model = target:FindFirstAncestorOfClass("Model")
+            if model then
+                print("\n[ MODEL INFO ]")
+                print("Model Name: " .. model.Name)
+                local hum = model:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    print("Humanoid: Found")
+                    print("Health: " .. hum.Health .. " / " .. hum.MaxHealth)
+                    print("State: " .. tostring(hum:GetState()))
+                else
+                    print("Humanoid: NOT Found")
+                end
+                
+                local root = model:FindFirstChild("HumanoidRootPart")
+                print("RootPart: " .. (root and "Yes" or "No"))
+                
+                -- Check if it's in our known lists
+                local isBoss = model:GetAttribute("IsBoss") or false
+                print("Attributes: " .. (isBoss and "BOSS" or "None"))
+            end
+            
+            -- Visual Feedback (Highlight)
+            local highlightHost = model or target
+            local hl = Instance.new("Highlight")
+            hl.Name = "ScanHighlight"
+            hl.Adornee = highlightHost
+            hl.FillColor = Color3.fromRGB(0, 255, 0) -- Bright Green
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.FillTransparency = 0.5
+            hl.OutlineTransparency = 0
+            hl.Parent = highlightHost
+            
+            -- Remove after 1 second
+            game:GetService("Debris"):AddItem(hl, 1)
+
+            -- Physical Properties
+            if target:IsA("BasePart") then
+                print("\n[ PROPERTIES ]")
+                print("Size: " .. tostring(target.Size))
+                print("Transparency: " .. target.Transparency)
+                print("CanCollide: " .. tostring(target.CanCollide))
+                print("Anchored: " .. tostring(target.Anchored))
+            end
+            
+            if target:IsA("MeshPart") then
+                print("MeshId: " .. target.MeshId)
+                print("TextureID: " .. target.TextureID)
+            end
+            
+            -- Structure Scan
+            local scope = model or target.Parent
+            if scope then
+                 print("\n[ CONTENTS OF: " .. scope.Name .. " ]")
+                 local count = 0
+                 for _, c in ipairs(scope:GetChildren()) do
+                     if count < 20 then -- Limit output
+                        print(" > " .. c.Name .. " [" .. c.ClassName .. "]")
+                     end
+                     count = count + 1
+                 end
+                 if count > 20 then print("... and " .. (count - 20) .. " more.") end
+            end
+            print("--------------------------------------------------")
+        else
+            print("[ SCAN ] No target found under mouse.")
+        end
+    end
+end)

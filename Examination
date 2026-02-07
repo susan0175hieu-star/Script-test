@@ -38,6 +38,7 @@ local detectedStaff = {}
 local mainInputConn = nil
 local tKeyConnection = nil
 local autoQteEnabled = false
+local freeMouseEnabled = false -- New variable for F-key toggle
             
 -- [ FORWARD DECLARATIONS ]
 -- Declared here so ThirdPersonUpdate (defined early) can access Combat Logic (defined late)
@@ -1046,7 +1047,7 @@ getgenv().TP_Toggle_Func = createToggle(VisualsTab, "Third Person  [ T ]", false
             LocalPlayer.CameraMode = Enum.CameraMode.Classic
             LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
             
-            if UserInputService.MouseBehavior ~= Enum.MouseBehavior.LockCenter then
+            if not freeMouseEnabled and UserInputService.MouseBehavior ~= Enum.MouseBehavior.LockCenter then
                 UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
             end
 
@@ -1210,6 +1211,28 @@ createToggle(LocalTab, "Noclip", false, function(state)
         end
     end
 end)
+
+local freeMouseLabel = createLabel(LocalTab, "Free Mouse  [ F ]")
+freeMouseLabel.Size = UDim2.new(1, 0, 0, 25)
+freeMouseLabel.TextColor3 = THEME.Accent
+freeMouseLabel.TextSize = 14
+freeMouseLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local freeMouseDesc = createLabel(LocalTab, "Press F to selectively Unlock/Free your mouse.")
+freeMouseDesc.Size = UDim2.new(1, 0, 0, 20)
+freeMouseDesc.TextSize = 12
+freeMouseDesc.TextXAlignment = Enum.TextXAlignment.Left
+
+local hideGuiLabel = createLabel(LocalTab, "Hide/Show GUI  [ CapsLock ]")
+hideGuiLabel.Size = UDim2.new(1, 0, 0, 25)
+hideGuiLabel.TextColor3 = THEME.Accent
+hideGuiLabel.TextSize = 14
+hideGuiLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local hideGuiDesc = createLabel(LocalTab, "Press CapsLock to toggle the menu visibility.")
+hideGuiDesc.Size = UDim2.new(1, 0, 0, 20)
+hideGuiDesc.TextSize = 12
+hideGuiDesc.TextXAlignment = Enum.TextXAlignment.Left
 
 
     task.spawn(function()
@@ -1492,7 +1515,7 @@ local function performRaycast(startPos, endPos, filterList)
     rayParams.FilterDescendantsInstances = filterList
     rayParams.IgnoreWater = true
     
-    local result = ws_Raycast(workspace, startPos, dir, rayParams)
+    local result = workspace:Raycast(startPos, dir, rayParams)
     if not result then return true end
     
     local hit = result.Instance
@@ -1560,7 +1583,7 @@ if myHead then
     -- Simple single-pass or limited multi-pass for Head
     for i = 1, 3 do
         globalRayParams.FilterDescendantsInstances = headFilter
-        local result = ws_Raycast(workspace, headOrigin, headDir, globalRayParams)
+        local result = workspace:Raycast(headOrigin, headDir, globalRayParams)
         
         if not result then return true, tPos end
         
@@ -2565,14 +2588,14 @@ elseif obj.Name == "HumanoidRootPart" then
 end
 end)
 
--- 4. Aggressive Mouse Unlock (Shift Lock Fix)
+-- 4. Aggressive Mouse Unlock (Shift Lock Fix & F-Key Toggle)
 local mouseOverrideConnection = RunService.RenderStepped:Connect(function()
 if not ScreenGui.Parent then 
     if mouseOverrideConnection then mouseOverrideConnection:Disconnect() end
     return 
 end
 
-if MainFrame.Visible then
+if MainFrame.Visible or freeMouseEnabled then
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
     UserInputService.MouseIconEnabled = true
     
@@ -2711,7 +2734,7 @@ end)
 
 -- [ TOGGLE ALL KEYBIND ]
 mainInputConn = UserInputService.InputBegan:Connect(function(input, gpe)
-if input.KeyCode == Enum.KeyCode.RightControl and not gpe then
+if input.KeyCode == Enum.KeyCode.CapsLock and not gpe then
 if MainFrame.Visible then
     MainFrame.Visible = false
     OpenButton.Visible = true
@@ -2741,6 +2764,27 @@ game:GetService("Debris"):AddItem(sound, 1)
 if getgenv().TP_Toggle_Func then
     getgenv().TP_Toggle_Func()
 end
+end
+
+-- [ F-KEY MOUSE UNLOCK ]
+if input.KeyCode == Enum.KeyCode.F then
+    freeMouseEnabled = not freeMouseEnabled
+    
+    if freeMouseEnabled then
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        UserInputService.MouseIconEnabled = true
+    else
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        UserInputService.MouseIconEnabled = false
+    end
+    
+    -- Sound feedback for F key
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://12221967"
+    sound.Volume = 0.5
+    sound.Parent = game:GetService("SoundService")
+    sound:Play()
+    game:GetService("Debris"):AddItem(sound, 1)
 end
 end)
                 

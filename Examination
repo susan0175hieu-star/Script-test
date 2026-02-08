@@ -1833,9 +1833,19 @@ getClosestTarget = function() -- Removed local, assigned to upvalue
 
         -- [ABSOLUTE STUN BLACKLIST] - IMPROVED BYPASS
         local nameLower = string.lower(enemy.Name)
-        local isRiser = string.find(nameLower, "riser") -- Apply to ALL Risers
         
-        if isRiser then
+        -- GROUP 1: High-Threat Variants (MUST AIM)
+        -- FireRiser, RiserHazmat, Armored Riser, etc. contain "Riser" but act differently.
+        -- We explicitly whitelist them to SKIP the stun check below.
+        local isHighThreatRiser = string.find(nameLower, "fireriser") or 
+                                  string.find(nameLower, "riserhazmat") or 
+                                  string.find(nameLower, "armored")
+                                  
+        -- GROUP 2: Common Fodder Risers (fodder)
+        -- Only apply the strict "Release if Stationary" logic to these specific guys.
+        local isCommonRiser = string.find(nameLower, "riser") and not isHighThreatRiser
+        
+        if isCommonRiser then
             -- Release if Velocity < 5.0 (Covers staggering/shaking animations)
             local isStationary = root.Velocity.Magnitude < 5.0 
             
@@ -1890,11 +1900,6 @@ getClosestTarget = function() -- Removed local, assigned to upvalue
         local rootY = root.Position.Y
         local heightDiff = math.abs(headY - rootY)
 
-        -- SMART KNEELING/STANDING STUN DETECTION
-        local isFireRiser = string.find(nameLower, "fireriser")
-        local isRiserHazmat = string.find(nameLower, "riserhazmat")
-        local isStunBlacklist = isFireRiser or isRiserHazmat
-
         -- Check Resurrecting State
         local isResurrecting = enemy:FindFirstChild("IsBusyResurrecting") and enemy.IsBusyResurrecting.Value
         
@@ -1906,8 +1911,8 @@ getClosestTarget = function() -- Removed local, assigned to upvalue
                                 (humanoid.Sit) or (root.CFrame.UpVector.Y < 0.4) or
                                 (heightDiff < 0.8) or 
                                 (enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned")) or
-                                isResurrecting or
-                                (isStunBlacklist and root.Velocity.Magnitude < 1.0) -- Fix Standing Stun for BOTH types
+                                isResurrecting
+                                -- REMOVED: (isStunBlacklist velocity check) - Caused FireRiser to be ignored when shooting
 
         if isCurrentlyProne then meta.lastProneTime = tick() end
         local isDowned = (tick() - (meta.lastProneTime or 0) < 0.2) 
@@ -1915,29 +1920,24 @@ getClosestTarget = function() -- Removed local, assigned to upvalue
         if isDead and not (meta and meta.ignoreHealth) then continue end 
 
         if isDowned then
-            -- [SMART RELEASE] Blacklisted Stun Enemies (RiserHazmat, FireRiser)
-            -- Only release if they are CONFIRMED stunned (has tag OR is stationary)
-            -- Allowing them to be targeted if they are moving (e.g. running low/lunging)
-            if isStunBlacklist then
+            -- [SMART RELEASE] ALL ENEMIES
+            -- If ANY enemy is confirmed stunned/downed provided they are NOT False Positives (FireRiser shooting)
+            -- We want to release aim to switch to a damageable target.
+            
+            local isFalsePositive = string.find(nameLower, "fireriser") or string.find(nameLower, "riserhazmat") or string.find(nameLower, "slasher")
+            
+            if not isFalsePositive then
                 local hasStunTag = (enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned"))
                 local isStationary = (root.Velocity.Magnitude < 2.0)
                 
+                -- If it's a common enemy, we release completely
                 if hasStunTag or isStationary then
-                    continue -- Truly Stunned/Downed -> RELEASE
+                    continue -- Truly Stunned/Downed/Invincible -> RELEASE AIM
                 end
-                -- Else: Moving/Active -> KEEP TARGETING (Treat as Exempt)
             end
-
-            -- BOSS/SHIELD/ELITE/SLASHER/MUTANT EXEMPTION
-            -- We MUST keep aiming at Slashers/Mutants even if they seem "low" (prone), 
-            local name = string.lower(enemy.Name)
-            local isSlasher = string.find(name, "slasher")
-            local isMutant = string.find(name, "mutant")
-
-            if not (meta.isBoss or meta.isShield or meta.elite or isSlasher or isMutant) then
-                local velocityMag = root.Velocity.Magnitude
-                if velocityMag <= 15.0 then continue end
-            end
+            
+            -- Note: We REMOVED the Boss/Elite exemption. 
+            -- Now, even Bosses will be skipped/deprioritized if they are in that "Invincible/Stunned" state.
         end
 
         -- ANCHORED CHECK (With Self-Defense Override)
@@ -1974,10 +1974,12 @@ getClosestTarget = function() -- Removed local, assigned to upvalue
         end
 
         -- TIER 2: STANDARD SCORING (Distance & Mouse Proximity)
-        local scoreA = (a.dist3D * 20) + a.dist - (a.meta.isBoss and 300 or 0)
-        local scoreB = (b.dist3D * 20) + b.dist - (b.meta.isBoss and 300 or 0)
+        -- EQUAL PRIORITY: No bonus for Bosses anymore. Purely based on Distance + FOV.
+        local scoreA = (a.dist3D * 20) + a.dist 
+        local scoreB = (b.dist3D * 20) + b.dist
 
         -- STUN/DOWNED PENALTY: Move downed targets to lowest priority
+        -- APPLIES TO EVERYONE NOW (Bosses included) so we don't shoot invincible targets
         if a.isDowned then scoreA = scoreA + 2000 end
         if b.isDowned then scoreB = scoreB + 2000 end
 

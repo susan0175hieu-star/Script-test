@@ -2967,8 +2967,8 @@ task.spawn(function()
 
     -- Connections are managed at the top of the script now
 
-    -- [ CLEANUP LOGIC ]
-    cleanupGUI = function()
+-- [ CLEANUP LOGIC ]
+cleanupGUI = function()
     if mouseOverrideConnection then
         mouseOverrideConnection:Disconnect()
         mouseOverrideConnection = nil
@@ -2981,10 +2981,10 @@ task.spawn(function()
 
     if fullBrightConnection then 
         fullBrightConnection:Disconnect() 
-    fullBrightConnection = nil
-    Lighting.Brightness = 1
-    Lighting.GlobalShadows = true
-    Lighting.OutdoorAmbient = Color3.fromRGB(127, 127, 127)
+        fullBrightConnection = nil
+        Lighting.Brightness = 1
+        Lighting.GlobalShadows = true
+        Lighting.OutdoorAmbient = Color3.fromRGB(127, 127, 127)
     end
 
     espEnabled = false
@@ -3111,20 +3111,20 @@ task.spawn(function()
         UserInputService.MouseBehavior = Enum.MouseBehavior.Default
     end
     end
-    end
+end
 
-    CloseButton.MouseButton1Click:Connect(function()
+CloseButton.MouseButton1Click:Connect(function()
     ConfirmOverlay.Visible = true
-    end)
+end)
 
-    ScreenGui.AncestryChanged:Connect(function()
+ScreenGui.AncestryChanged:Connect(function()
     if not ScreenGui:IsDescendantOf(game) then
     cleanupGUI()
     end
-    end)
+end)
 
-    -- [ TOGGLE ALL KEYBIND ]
-    mainInputConn = UserInputService.InputBegan:Connect(function(input, gpe)
+-- [ TOGGLE ALL KEYBIND ]
+mainInputConn = UserInputService.InputBegan:Connect(function(input, gpe)
     if input.KeyCode == Enum.KeyCode.CapsLock and not gpe then
     if MainFrame.Visible then
         MainFrame.Visible = false
@@ -3134,10 +3134,10 @@ task.spawn(function()
         OpenButton.Visible = false
     end
     end
-    end)
+end)
 
-    -- [ SILENT T-KEY HANDLER + SOUND ]
-    tKeyConnection = UserInputService.InputBegan:Connect(function(input, gpe)
+-- [ SILENT T-KEY HANDLER + SOUND ]
+tKeyConnection = UserInputService.InputBegan:Connect(function(input, gpe)
     -- Ignore if user is typing (Chatbox/TextBox)
     local isTyping = UserInputService:GetFocusedTextBox() ~= nil
     if isTyping then return end

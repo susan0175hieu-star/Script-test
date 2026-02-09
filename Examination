@@ -59,6 +59,7 @@
         WalkSpeed = 24,
         FlySpeed = 50,
         AntiStaffGroupId = 34159688,
+        SkipIntro = true,
             
         -- Aimbot Settings
         AimPart = "Head",
@@ -67,6 +68,7 @@
         TeamCheck = false,
         WallCheck = true,
         MaxDistance = 3000, -- Standard Range
+        ShielderOffset = 0.7,
     }
 
     local validEnemies = {}
@@ -81,6 +83,7 @@
     local getClosestTarget = nil -- Will be assigned later
     local noclipConn = nil
     -- AUTO NOCLIP ON START (Handled by GUI Toggle)
+    local skipIntroEnabled = true
     local cleanupGUI = nil -- Will be assigned later
     local lastTargetSearch = 0
     local cachedTarget = nil
@@ -158,6 +161,50 @@
     end
 
     Players.PlayerAdded:Connect(checkPlayerStaff)
+
+    -- [ INTRO SKIPPER LOGIC ]
+    task.spawn(function()
+        local function checkGui(gui)
+            if not gui or not skipIntroEnabled then return end
+            local name = string.lower(gui.Name)
+            if string.find(name, "intro") or string.find(name, "loading") or string.find(name, "splash") then
+                gui:Destroy()
+            end
+        end
+
+        local function clickPlay(parent)
+            if not skipIntroEnabled then return end
+            for _, child in ipairs(parent:GetDescendants()) do
+                if child:IsA("TextButton") or child:IsA("ImageButton") then
+                    local txt = ""
+                    if child:IsA("TextButton") then
+                        txt = string.lower(child.Text or "")
+                    elseif child:IsA("ImageButton") then
+                        txt = string.lower(child.Name)
+                    end
+                    
+                    if txt == "play" or txt == "bắt đầu" or txt == "start" or txt == "skip" then
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                        task.wait(0.05)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                        for _, conn in pairs(getconnections(child.MouseButton1Click)) do
+                            conn:Fire()
+                        end
+                    end
+                end
+            end
+        end
+
+        local playerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
+        if playerGui then
+            for _, gui in ipairs(playerGui:GetChildren()) do checkGui(gui) end
+            local skipConn = playerGui.ChildAdded:Connect(checkGui)
+            clickPlay(playerGui)
+            task.delay(20, function()
+                if skipConn then skipConn:Disconnect() skipConn = nil end
+            end)
+        end
+    end)
 
     local nameBlacklist = {
         "npc", "hizoimviewmodel", "viewmodel", -- System
@@ -1481,15 +1528,22 @@
 
     aimEnabled = false -- Removed local
     local aimKey = Enum.UserInputType.MouseButton2
-    local aimFOV = 200
-    local aimSmoothness = 0.25 -- Lower = Smoother, Higher = Snappier (Tuned to reduce jitter)
-    local aimRightOffset = 0.6
-    local aimUpOffset = 0.4 -- Trả về mức cũ cho quái khiên
-    local lastTargetPart = nil -- Stickiness
+    local aimFOV = 300
+    local aimSmoothness = 0.4 -- Updated to match AimBot.lua
+    local aimPrediction = 0.145 -- Updated to match AimBot.lua
+    local aimDeadzone = 4
+    local aimShielderOffset = 0.5
+    local wallCheckEnabled = true
+    local ignoreExecution = true
+    
+    local lastTargetPart = nil 
     local smoothedVelocity = Vector3.new()
     local validEnemies = {}
-    local entityCache = {} -- Cache for NPC metadata (Shield, Mutant, etc.)
-    local targetCache = {} -- Cache for humanoid/root references
+    local entityCache = {} 
+    local targetCache = {} 
+    
+    local IgnoredAnimKeywords = {"grab", "execute", "kill", "finish", "cinematic", "stun", "knockdown"}
+    local IgnoredAnimIDs = {"97242562790139", "128010889227844", "180436334"}
 
     -- [ NPC TARGET LIST (Exact Names) ]
     local TargetNPCs = {
@@ -1667,589 +1721,131 @@
     local lastTargetTime = 0
     local lastLoggedTarget = nil -- Store last NPC printed in debug logs
 
-    -- 2. Aim Logic
-
-    -- Shared Raycast Parameters
-    local globalRayParams = RaycastParams.new()
-    globalRayParams.FilterType = Enum.RaycastFilterType.Exclude
-    globalRayParams.IgnoreWater = true
-
-    local function checkPartVisibility(part, targetModel, myChar)
-        if not part then return false end
-
-        -- 1. PRIMARY CHECK: FROM CAMERA
+    -- 2. Aim Logic (Integrated from NEWAIMBOT)
+    local function IsVisible(target, part)
+        if not wallCheckEnabled then return true end
         local origin = Camera.CFrame.Position
-        local tPos = part.Position
-        local direction = (tPos - origin)
-
-        local currentFilter = {myChar, Camera}
-        local passedCameraCheck = false
-
-        -- Function to perform a single raycast check with filter
-        local function performRaycast(startPos, endPos, filterList)
-            local dir = (endPos - startPos)
-            local rayParams = RaycastParams.new()
-            rayParams.FilterType = Enum.RaycastFilterType.Exclude
-            rayParams.FilterDescendantsInstances = filterList
-            rayParams.IgnoreWater = true
-            
-            local result = workspace:Raycast(startPos, dir, rayParams)
-            if not result then return true end
-            
-            local hit = result.Instance
-            local isPartOfChar = hit:IsDescendantOf(targetModel)
-            
-            if isPartOfChar or hit == part then return true end
-
-            -- Shield Check
-            local lowerName = string.lower(hit.Name)
-            if string.find(lowerName, "shield") or string.find(lowerName, "khiên") then 
-                if isPartOfChar then return true end
-            end
-
-            -- Transparency/Collision Pass-through
-            if hit.Transparency > 0.7 or not hit.CanCollide then
-                -- Recursively ignore this part for this specific check (simplified by just returning fail here to avoid infinite loops in simple implementation, 
-                -- or better, we add to filter and retry. For simplicity/perf in this fallback logic, we can try adding to filter)
-                return false, hit 
-            end
-
-            return false
-        end
-
-        -- Standard Camera Iteration (Existing Logic)
-        for i = 1, 4 do 
-            globalRayParams.FilterDescendantsInstances = currentFilter
-            local result = workspace:Raycast(origin, direction, globalRayParams)
-
-            if not result then 
-                passedCameraCheck = true 
-                break 
-            end
-
-            local hit = result.Instance
-            local isPartOfChar = hit:IsDescendantOf(targetModel)
-            local lowerName = string.lower(hit.Name)
-
-            if isPartOfChar or hit == part or (string.find(lowerName, "shield") and isPartOfChar) then 
-                passedCameraCheck = true
-                break
-            end
-
-            if hit.Transparency > 0.7 or not hit.CanCollide then
-                table.insert(currentFilter, hit)
-            else
-                passedCameraCheck = false
-                break
-            end
-        end
-
-        if passedCameraCheck then return true, tPos end
-
-        -- 2. SECONDARY CHECK: FROM CHARACTER HEAD (Fix for Wall Clipping)
-        -- If Camera is blocked (e.g. wall behind character), check if the CHARACTER receives line of sight
-        if myChar then
-            local myHead = myChar:FindFirstChild("Head")
-            if myHead then
-                local headOrigin = myHead.Position
-                local headDir = (tPos - headOrigin)
-                
-                -- Reuse filter but reset strictness slightly or keep adding
-                local headFilter = {myChar, Camera}
-                
-                -- Simple single-pass or limited multi-pass for Head
-                for i = 1, 3 do
-                    globalRayParams.FilterDescendantsInstances = headFilter
-                    local result = workspace:Raycast(headOrigin, headDir, globalRayParams)
-                    
-                    if not result then return true, tPos end
-                    
-                    local hit = result.Instance
-                    local isPartOfChar = hit:IsDescendantOf(targetModel)
-                    local lowerName = string.lower(hit.Name)
-
-                    if isPartOfChar or hit == part or (string.find(lowerName, "shield") and isPartOfChar) then 
-                        return true, tPos
-                    end
-                    
-                    if hit.Transparency > 0.7 or not hit.CanCollide then
-                        table.insert(headFilter, hit)
-                    else
-                        return false
-                    end
-                end
-            end
-        end
-
+        local direction = part.Position - origin
+        local params = RaycastParams.new()
+        params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.IgnoreWater = true
+        local result = workspace:Raycast(origin, direction, params)
+        if not result then return true end
+        if result.Instance:IsDescendantOf(target) then return true end
         return false
     end
 
-    -- 2. Aim Logic (Optimized)
-    -- [ RECYCLE TABLE ]
-    local candidates = {}
+    local function IsExecuting(humanoid, rootPart)
+        if not ignoreExecution or not humanoid then return false end
+        if humanoid.PlatformStand or humanoid:GetState() == Enum.HumanoidStateType.Physics or humanoid:GetState() == Enum.HumanoidStateType.FallingDown then
+            return true
+        end
+        if rootPart and rootPart.Anchored then return true end
+        local animator = humanoid:FindFirstChild("Animator")
+        if animator then
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                if track.IsPlaying then
+                    local animName = string.lower(track.Animation.Name)
+                    for _, keyword in ipairs(IgnoredAnimKeywords) do
+                        if string.find(animName, keyword) then return true end
+                    end
+                    local idNum = string.match(track.Animation.AnimationId, "%d+")
+                    for _, badId in ipairs(IgnoredAnimIDs) do
+                        if idNum == badId then return true end
+                    end
+                end
+            end
+        end
+        return false
+    end
 
-    getClosestTarget = function() -- Removed local, assigned to upvalue
+    getClosestTarget = function() 
+        local bestTarget = nil
+        local shortestDistance = math.huge
         local mousePos = UserInputService:GetMouseLocation()
-        table.clear(candidates) -- Use existing table, just clear contents
         
         local char = LocalPlayer.Character
-        local myRoot = char and char:FindFirstChild("HumanoidRootPart")
-        if not myRoot then return end
-        local myPos = myRoot.Position
-
         for _, enemy in ipairs(validEnemies) do
             if not enemy or enemy == char then continue end
             
-            local entry = targetCache[enemy]
-            if not entry then
-                local hum = enemy:FindFirstChildOfClass("Humanoid")
-                local rootPart = enemy:FindFirstChild("HumanoidRootPart")
-                local meta = entityCache[enemy]
-                if hum and rootPart then
-                    entry = {hum = hum, root = rootPart, meta = meta}
-                    targetCache[enemy] = entry
-                else
-                    continue
-                end
-            end
-
-            local humanoid = entry.hum
-            local root = entry.root
-            local meta = entry.meta
-
-            -- Distance & FOV Check
-            local dist3D = (myPos - root.Position).Magnitude
-            local maxRange = meta.isBoss and 2000 or 400
-            if dist3D > maxRange then continue end
-
-            local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
-            local isAmbush = (dist3D < 50) -- 360 DEGREEE LOGIC: Detect threats behind/close automatically (Increased from 35)
-
-            -- Filter: Only allow if on screen OR extremely close (360 defense)
-            if not (onScreen or isAmbush) then continue end
-
-            local mouseDist = onScreen and (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude or (aimFOV * 2)
-            -- FOV Filter: Only applies to enemies outside the Ambush/Danger zone
-            if not isAmbush and mouseDist > aimFOV then continue end
-
-            -- Death/State Logic (Strict Filter)
-            local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
-
-            -- [ABSOLUTE STUN BLACKLIST] - IMPROVED BYPASS
-            local nameLower = string.lower(enemy.Name)
+            local hum = enemy:FindFirstChildOfClass("Humanoid")
+            local root = enemy:FindFirstChild("HumanoidRootPart")
+            if not hum or not root or hum.Health <= 0 then continue end
             
-            -- GROUP 1: High-Threat Variants (MUST AIM)
-            -- FireRiser, RiserHazmat, Armored Riser, etc. contain "Riser" but act differently.
-            -- We explicitly whitelist them to SKIP the stun check below.
-            local isHighThreatRiser = string.find(nameLower, "fireriser") or 
-                                    string.find(nameLower, "riserhazmat") or 
-                                    string.find(nameLower, "armored")
-                                    
-            -- GROUP 2: Common Fodder Risers (fodder)
-            -- Only apply the strict "Release if Stationary" logic to these specific guys.
-            local isCommonRiser = string.find(nameLower, "riser") and not isHighThreatRiser
+            if IsExecuting(hum, root) then continue end
+
+            local part = enemy:FindFirstChild("Head") or root
+            local vector, onScreen = Camera:WorldToViewportPoint(part.Position)
             
-            if isCommonRiser then
-                -- Release if Velocity < 5.0 (Covers staggering/shaking animations)
-                local isStationary = root.Velocity.Magnitude < 5.0 
+            if onScreen then
+                local screenPoint = Vector2.new(vector.X, vector.Y)
+                local dist = (screenPoint - mousePos).Magnitude
                 
-                -- Scan for Stun Tags (OPTIMIZED: No GetDescendants Loop)
-                local hasStunTag = enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned") or enemy:FindFirstChild("Knocked")
-                
-                if isStationary or hasStunTag then continue end
-            end
-
-            -- [REAL SPEED CALCULATION] fix for FireRiser/RiserHazmat jitter
-            if not enemy:GetAttribute("LastPos") then
-                enemy:SetAttribute("LastPos", root.Position)
-                enemy:SetAttribute("LastTime", tick())
-                enemy:SetAttribute("RealSpeed", 0)
-            else
-                local lastPos = enemy:GetAttribute("LastPos")
-                local lastTime = enemy:GetAttribute("LastTime")
-                local currTime = tick()
-                local timeDelta = currTime - lastTime
-                
-                if timeDelta > 0.05 then -- Update rate
-                    local dist = (root.Position - lastPos).Magnitude
-                    local rSpeed = dist / timeDelta
-                    enemy:SetAttribute("RealSpeed", rSpeed)
-                    enemy:SetAttribute("LastPos", root.Position)
-                    enemy:SetAttribute("LastTime", currTime)
-                end
-            end
-            
-            local realSpeed = enemy:GetAttribute("RealSpeed") or 0
-            local nameLower = string.lower(enemy.Name)
-            local isProblematicEnemy = string.find(nameLower, "riserhazmat") or string.find(nameLower, "fireriser")
-
-            -- [SMART STUN DETECTION]
-            -- If it's a "Problematic Enemy" and it is NOT moving (RealSpeed ~ 0), 
-            -- we force release it, IGNORING the fake high Velocity (20+) caused by physics jitter.
-            if isProblematicEnemy then
-                if realSpeed < 5.0 then -- Threshold: If moving slower than 5 studs/s, it's stunned/camping/downed
-                    continue 
-                end
-            end
-
-            -- [AUTO EXECUTION DETECTION - GENERAL]
-            -- Thay thế check ID thủ công bằng thuật toán hành vi (Heuristic)
-            local isExecuting = false
-            local isBlocking = false -- [NEW] Flag to override checks if blocking
-
-            if dist3D < 30 then 
-                local animator = humanoid:FindFirstChild("Animator")
-                if animator then
-                    local playingTracks = animator:GetPlayingAnimationTracks()
-                    for _, track in ipairs(playingTracks) do
-                        -- [WHITELIST] Bỏ qua check với animation Đỡ đòn (Block) của Slasher
-                        if string.find(track.Animation.AnimationId, "137568989278456") then
-                            isBlocking = true
-                            continue
-                        end
-
-                        -- Dấu hiệu 1: Animation có tốc độ diễn xuất chậm (Cinematic/Grab)
-                        -- (Thông thường đòn đánh là >1.0, chạy là 1.0, nhưng Grab/Execute thường là 0.5 - 0.8)
-                        local isCinematicSpeed = (track.Speed <= 0.85 and track.Speed > 0.1)
-                        
-                        -- Dấu hiệu 2: Tên có từ khóa (Backup phụ trợ)
-                        local lowName = string.lower(track.Name)
-                        local isSuspiciousName = string.find(lowName, "grab") or string.find(lowName, "exec") or string.find(lowName, "kill") or string.find(lowName, "eat")
-
-                        if isCinematicSpeed or isSuspiciousName then
-                            -- Điều kiện quyết định: Quái đang "bận" đứng yên tại chỗ để diễn hoạt cảnh
-                            if root.Velocity.Magnitude < 5.0 then
-                                isExecuting = true
-                                -- Don't break here, keep checking for blocking override
-                            end
-                        end
-                    end
-                end
-            end
-
-            if isExecuting and not isBlocking then 
-                continue -- BỎ QUA QUÁI NÀY (Tự động unlock aim khi quái đang diễn hoạt cảnh chậm)
-            end
-
-            -- NEW: Downed/Ragdoll Check (Standard for other enemies)
-            local head = enemy:FindFirstChild("Head")
-            local headY = head and head.Position.Y or 0
-            local rootY = root.Position.Y
-            local heightDiff = math.abs(headY - rootY)
-
-            -- Check Resurrecting State
-            local isResurrecting = enemy:FindFirstChild("IsBusyResurrecting") and enemy.IsBusyResurrecting.Value
-            
-            -- PRONE MEMORY
-            local isCurrentlyProne = (
-                                    humanoid.PlatformStand or 
-                                    (humanoid:GetState() == Enum.HumanoidStateType.FallingDown) or 
-                                    (humanoid:GetState() == Enum.HumanoidStateType.Ragdoll) or
-                                    (humanoid:GetState() == Enum.HumanoidStateType.Physics) or
-                                    (humanoid.Sit) or (root.CFrame.UpVector.Y < 0.4) or
-                                    (heightDiff < 0.8) or 
-                                    (enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned")) or
-                                    isResurrecting
-                                    ) and not isBlocking -- [OVERRIDE] If blocking, ignore prone checks
-                                    
-            if isCurrentlyProne then meta.lastProneTime = tick() end
-            local isDowned = (tick() - (meta.lastProneTime or 0) < 0.2) 
-
-            if isDead and not (meta and meta.ignoreHealth) then continue end 
-
-            if isDowned then
-                -- [SMART RELEASE] ALL ENEMIES
-                -- If ANY enemy is confirmed stunned/downed provided they are NOT False Positives (FireRiser shooting)
-                -- We want to release aim to switch to a damageable target.
-                
-                local isFalsePositive = string.find(nameLower, "fireriser") or string.find(nameLower, "riserhazmat") or string.find(nameLower, "slasher")
-                
-                if not isFalsePositive then
-                    -- OPTIMIZED: Direct check instead of loop
-                    local hasStunTag = enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned") or enemy:FindFirstChild("Knocked")
-                    local isStationary = (root.Velocity.Magnitude < 2.0)
-                    
-                    -- If it's a common enemy, we release completely
-                    if hasStunTag or isStationary then
-                        continue -- Truly Stunned/Downed/Invincible -> RELEASE AIM
-                    end
-                end
-                
-                -- Note: We REMOVED the Boss/Elite exemption. 
-                -- Now, even Bosses will be skipped/deprioritized if they are in that "Invincible/Stunned" state.
-            end
-
-            -- ANCHORED CHECK (With Self-Defense Override)
-            local isSelfDefense = (dist3D <= 40)
-            local name = string.lower(enemy.Name)
-            local isSlasher = string.find(name, "slasher")
-            local isExempt = meta.isBoss or meta.isShield or meta.elite or meta.isMutant or isSlasher or hasWeapon(enemy)
-
-            if root.Anchored and not (isSelfDefense or isExempt) then continue end
-
-            table.insert(candidates, {
-                model = enemy,
-                dist = mouseDist,
-                dist3D = dist3D,
-                root = root,
-                humanoid = humanoid,
-                meta = meta,
-                isDead = isDead,
-                isDowned = isDowned -- Track if target is currently stunned/downed
-            })
-        end
-
-        -- Sort by PROXIMITY (User Request: "Prioritize all monsters near self first")
-        table.sort(candidates, function(a, b) 
-            -- TIER 1: DANGER ZONE (< 50 studs) - Absolute Priority
-            local aIsDanger = (a.dist3D < 50) and not a.isDowned
-            local bIsDanger = (b.dist3D < 50) and not b.isDowned
-
-            if aIsDanger and not bIsDanger then return true end
-            if bIsDanger and not aIsDanger then return false end
-
-            if aIsDanger and bIsDanger then
-                return a.dist3D < b.dist3D -- Both standing in danger zone, closest wins
-            end
-
-            -- TIER 2: STANDARD SCORING (Distance & Mouse Proximity)
-            -- EQUAL PRIORITY: No bonus for Bosses anymore. Purely based on Distance + FOV.
-            local scoreA = (a.dist3D * 20) + a.dist 
-            local scoreB = (b.dist3D * 20) + b.dist
-
-            -- STUN/DOWNED PENALTY: Move downed targets to lowest priority
-            -- APPLIES TO EVERYONE NOW (Bosses included) so we don't shoot invincible targets
-            if a.isDowned then scoreA = scoreA + 2000 end
-            if b.isDowned then scoreB = scoreB + 2000 end
-
-            -- STICKINESS: Maintain target focus (Only for NOT downed targets)
-            -- INCREASED: From 150 to 500 to prevent dizziness/switching when 2 enemies are close
-            if a.model == lastTarget and not a.isDowned then scoreA = scoreA - 500 end
-            if b.model == lastTarget and not b.isDowned then scoreB = scoreB - 500 end
-
-            -- BACKSTAB PRIORITY: Bonus for targets facing away (vulnerable)
-            local aIsBack = (a.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.5)
-            local bIsBack = (b.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.5)
-            if aIsBack then scoreA = scoreA - 80 end
-            if bIsBack then scoreB = scoreB - 80 end
-
-            return scoreA < scoreB
-        end)
-
-        -- PASS 2: Heavy Physics (Visibility) on Top Candidates
-        globalRayParams.FilterDescendantsInstances = {char, Camera}
-
-        for _, cand in ipairs(candidates) do
-            local character = cand.model
-            local meta = cand.meta
-
-            -- Check Targets with STICKINESS (Stay on same part if possible)
-            local currentTargetPart = nil
-            local currentLockedPos = nil
-
-            -- 1. Try to stay on the same part we were already aiming at
-            if lastTarget == character and lastTargetPart then
-                local heldPart = character:FindFirstChild(lastTargetPart)
-                local head = character:FindFirstChild("Head")
-                
-                -- Always try to "Switch back" to Head if it becomes visible
-                if lastTargetPart ~= "Head" and head then
-                    local hVis, hPos = checkPartVisibility(head, character, char, globalRayParams)
-                    if hVis then
-                        currentTargetPart, currentLockedPos = head, hPos
-                        lastTargetPart = "Head"
-                    end
-                end
-                
-                if not currentTargetPart and heldPart then
-                    local vis, pos = checkPartVisibility(heldPart, character, char, globalRayParams)
-                    if vis then currentTargetPart, currentLockedPos = heldPart, pos end
-                end
-            end
-
-            -- 2. If no persistent part or it's hidden, find a new one
-            if not currentTargetPart then
-                local targets = {"Head", "UpperTorso", "HumanoidRootPart"}
-                for _, name in ipairs(targets) do
-                    local p = character:FindFirstChild(name)
-                    local vis, pos = checkPartVisibility(p, character, char, globalRayParams)
-                    if vis then 
-                        currentTargetPart, currentLockedPos = p, pos
-                        lastTargetPart = name -- Save for next frame
-                        break 
-                    end
-                end
-            end
-
-            if not currentTargetPart then
-                local detailParts = {"RightUpperArm", "LeftUpperArm", "RightLowerArm", "LeftLowerArm", "RightLowerLeg", "LeftLowerLeg"}
-                for _, name in ipairs(detailParts) do
-                    local part = character:FindFirstChild(name)
-                    local vis, pos = checkPartVisibility(part, character, char, globalRayParams)
-                    if vis then 
-                        currentTargetPart, currentLockedPos = part, pos
-                        lastTargetPart = name -- Save for next frame
-                        break 
-                    end
-                end
-            end
-
-            -- Valid Target Found? Return immediately (Snap to it!)
-            if currentTargetPart then
-                local isFacingAway = (cand.root.CFrame.LookVector:Dot(Camera.CFrame.LookVector) > 0.6)
-                
-                -- DYNAMIC SHIELD BYPASS: Disable offset if downed OR facing away
-                local hum = cand.humanoid
-                local root = cand.root
-                local head = character:FindFirstChild("Head")
-                local hDiff = head and math.abs(head.Position.Y - root.Position.Y) or 5
-                
-                -- PUSH MEMORY: If spinning (> 5) or pushed (> 15), treat as vulnerable for 0.6s
-                if cand.root.RotVelocity.Magnitude > 5 or cand.root.Velocity.Magnitude > 15 then meta.lastPushTime = tick() end
-                local isRecentlyPushed = (tick() - (meta.lastPushTime or 0) < 0.6)
-
-                -- Optimized Prone Detection: Shielders keep offset unless truly flat on ground
-                local isCurrentlyProne = hum.PlatformStand or (hum:GetState() == Enum.HumanoidStateType.FallingDown) or (hum:GetState() == Enum.HumanoidStateType.Ragdoll) or (hum:GetState() == Enum.HumanoidStateType.Physics) or (hum.Sit) or (root.CFrame.UpVector.Y < 0.4) or (hDiff < 0.8)
-                
-                -- Taunt/Shield Bang Fix: Don't count "Stunned" or "Push" states as prone if the shielder is still upright
-                local stunMarker = character:FindFirstChild("Stunned") or character:FindFirstChild("Stun") or isRecentlyPushed
-                if stunMarker and not (meta.isShield and hDiff > 1.1) then
-                    isCurrentlyProne = true
-                end
-
-                if isCurrentlyProne then meta.lastProneTime = tick() end
-                
-                local isProne = (tick() - (meta.lastProneTime or 0) < 0.2) -- Match recovery time
-                local shouldApplyOffset = meta.isShield and not (isProne or isFacingAway)
-
-                -- Persistence Update
-                lastTarget = character
-                lastTargetTime = tick()
-
-                return currentTargetPart, currentLockedPos, shouldApplyOffset, cand.root.Velocity, currentTargetPart.Name, meta.isHighMob, isFacingAway, character
-            end
-        end
-
-        -- PASS 3: Target Persistence (Grace Period for Bosses/Active Targets)
-        -- If we lost the target due to teleport/jump, try to find it again for 0.5s
-        if lastTarget and lastTarget.Parent and (tick() - lastTargetTime < 0.5) then
-            local character = lastTarget
-            local root = character:FindFirstChild("HumanoidRootPart")
-            local hum = character:FindFirstChildOfClass("Humanoid")
-
-            if root and hum and hum.Health > 0 then
-                local meta = entityCache[character] or {isBoss = isBossEntity(character)}
-                
-                -- For bosses, we allow "loose" tracking (check more parts if needed)
-                local targets = {"Head", "UpperTorso", "HumanoidRootPart", "LowerTorso", "RightUpperArm", "LeftUpperArm"}
-                for _, name in ipairs(targets) do
-                    local p = character:FindFirstChild(name)
-                    if p then
-                        local vis, pos = checkPartVisibility(p, character, char, globalRayParams)
-                        if vis or meta.isBoss then -- Bosses can be tracked even if occluded for 0.5s
-                            -- DYNAMIC SHIELD BYPASS (Persistence): Disable offset if downed
-                            local headPos = character:FindFirstChild("Head") and character.Head.Position.Y or 0
-                            local hDiff = math.abs(headPos - root.Position.Y)
-                            -- PUSH MEMORY (Persistence)
-                            if root.RotVelocity.Magnitude > 5 or root.Velocity.Magnitude > 15 then meta.lastPushTime = tick() end
-                            local isRecentlyPushed = (tick() - (meta.lastPushTime or 0) < 0.6)
-
-                            -- Persistence Logic Fix: Apply the same refined prone check
-                            local isCurrentlyProne = hum.PlatformStand or (hum:GetState() == Enum.HumanoidStateType.FallingDown) or (hum:GetState() == Enum.HumanoidStateType.Ragdoll) or (hum:GetState() == Enum.HumanoidStateType.Physics) or (hum.Sit) or (root.CFrame.UpVector.Y < 0.4) or (hDiff < 0.8)
-                            local stunMarker = character:FindFirstChild("Stunned") or character:FindFirstChild("Stun") or isRecentlyPushed
-                            if stunMarker and not (meta.isShield and hDiff > 1.1) then
-                                isCurrentlyProne = true
-                            end
-                            
-                            if isCurrentlyProne then meta.lastProneTime = tick() end
-                            
-                            local isProne = (tick() - (meta.lastProneTime or 0) < 0.5)
-                            local shouldApplyOffset = meta.isShield and not isProne
-                            
-                            return p, pos or p.Position, shouldApplyOffset, root.Velocity, p.Name, meta.isHighMob, false, character
+                if dist <= aimFOV then
+                    if IsVisible(enemy, part) then
+                        if dist < shortestDistance then
+                            shortestDistance = dist
+                            bestTarget = enemy
                         end
                     end
                 end
             end
         end
-
-        return nil
+        return bestTarget
     end
-
-        -- 3. Aim Loop
-        isAiming = false -- Reset state
-
-        -- Disconnect old if exists (Safety)
-        if getgenv().aimInputBeganConn then getgenv().aimInputBeganConn:Disconnect() end
-        if getgenv().aimInputEndedConn then getgenv().aimInputEndedConn:Disconnect() end
-
-        getgenv().aimInputBeganConn = UserInputService.InputBegan:Connect(function(input, gpe)
-            if input.UserInputType == aimKey then isAiming = true end
-        end)
-
-        getgenv().aimInputEndedConn = UserInputService.InputEnded:Connect(function(input, gpe)
-            if input.UserInputType == aimKey then 
-                isAiming = false 
-                lastTarget = nil 
-                lastTargetPart = nil
-                smoothedVelocity = Vector3.new()
-            end
-        end)
-
-        -- Aim Bot loop moved into ThirdPersonUpdate for synchronization
-        -- If Third Person is OFF, we still need a fallback AimBot loop
-        -- Aim Bot loop: PERSISTENT TASK (Self-Healing)
-        task.spawn(function()
-            while true do
-                local dt = RunService.RenderStepped:Wait()
-                if not ScreenGui.Parent then break end -- Exit only if GUI is destroyed (Unloaded)
-                
-                -- Telemetry Check
-                if aimEnabled then
-                    local myChar = LocalPlayer.Character
-                    if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+    
+    -- 3. Aim Loop (Restored and Upgraded)
+    isAiming = false
+    task.spawn(function()
+        while true do
+            local dt = RunService.RenderStepped:Wait()
+            if not ScreenGui.Parent then break end
+            
+            if aimEnabled and isAiming then
+                local targetChar = getClosestTarget()
+                if targetChar then
+                    local part = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
+                    local root = targetChar:FindFirstChild("HumanoidRootPart")
+                    
+                    if part and root then
+                        local predictedPos = part.Position + (root.Velocity * aimPrediction)
                         
-                        -- Only run here if Third Person loop is NOT active (prevent double-update)
-                        if not getgenv().ThirdPersonUpdate_Active and isAiming then
-                            local targetPart, targetPos, isShield, velocity, partName, isHighMob, isFacingAway, targetChar = getClosestTarget()
-                            
-                            if targetPart and targetPos then
-                                local currentCF = workspace.CurrentCamera.CFrame
-                                local finalTargetPos = targetPos
-                                
-                                -- CHỈ hạ thấp tâm nếu KHÔNG PHẢI quái khiên
-                                if not isShield then
-                                    finalTargetPos = finalTargetPos - (currentCF.UpVector * 0.10)
-                                end
-                                smoothedVelocity = smoothedVelocity:Lerp(velocity, 0.2)
-                                local predictionFactor = isHighMob and 0.12 or 0.06
-                                if smoothedVelocity.Magnitude > 1.5 then finalTargetPos = finalTargetPos + (smoothedVelocity * predictionFactor) end
-                                
-                                if isShield then 
-                                    local hrp = myChar:FindFirstChild("HumanoidRootPart")
-                                    local dist = hrp and (hrp.Position - targetPos).Magnitude or 20
-                                    local dynamicRight = aimRightOffset + math.clamp((20 - dist) * 0.022, 0, 0.1)
-                                    
-                                    finalTargetPos = finalTargetPos + (currentCF.RightVector * dynamicRight) + (currentCF.UpVector * aimUpOffset) 
-                                end
-                                if isFacingAway then 
-                                    -- Đẩy sâu vào lưng (0.4) và NHÍCH CAO LÊN (0.1)
-                                    finalTargetPos = finalTargetPos - (currentCF.LookVector * 0.4) + (currentCF.UpVector * 0.1) 
-                                end
-                                local targetCF = CFrame.new(currentCF.Position, finalTargetPos)
-                                local lerpSpeed = math.clamp(aimSmoothness * (smoothedVelocity.Magnitude > 5 and (smoothedVelocity.Magnitude/10) or 1), 0.05, 0.8)
-                                workspace.CurrentCamera.CFrame = currentCF:Lerp(targetCF, lerpSpeed)
+                        -- Shielder Bypass Logic (Synced from AimBot.lua)
+                        if string.find(string.lower(targetChar.Name), "shielder") then
+                            local targetLook = root.CFrame.LookVector
+                            local directionToPlayer = (Camera.CFrame.Position - root.Position).Unit
+                            if targetLook:Dot(directionToPlayer) > 0.1 then 
+                                predictedPos = predictedPos + (Camera.CFrame.RightVector * aimShielderOffset)
+                            end
+                        end
+                        
+                        local screenPos, onScreen = Camera:WorldToViewportPoint(predictedPos)
+                        if onScreen then
+                            local diff = Vector2.new(screenPos.X, screenPos.Y) - UserInputService:GetMouseLocation()
+                            if diff.Magnitude > aimDeadzone then
+                                local targetCF = CFrame.new(Camera.CFrame.Position, predictedPos)
+                                Camera.CFrame = Camera.CFrame:Lerp(targetCF, aimSmoothness)
                             end
                         end
                     end
                 end
             end
-        end)
+        end
+    end)
 
-        createToggle(CombatTab, "Aim Bot", false, function(state)
-            aimEnabled = state
-        end)
-        local aimLabel = createLabel(CombatTab, "[ Working Only Holding RightClick ]")
+    getgenv().aimInputBeganConn = UserInputService.InputBegan:Connect(function(input, gpe)
+        if not gpe and input.UserInputType == aimKey then isAiming = true end
+    end)
+    getgenv().aimInputEndedConn = UserInputService.InputEnded:Connect(function(input, gpe)
+        if input.UserInputType == aimKey then isAiming = false end
+    end)
+
+    createToggle(CombatTab, "Aim Bot", false, function(state)
+        aimEnabled = state
+    end)
+
+    local aimLabel = createLabel(CombatTab, "[ Working Only Holding RightClick ]")
         aimLabel.Size = UDim2.new(1, 0, 0, 25) -- Ensure height
         aimLabel.TextSize = 15 -- Slightly larger
         aimLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -2954,7 +2550,6 @@
         qteLabel.TextSize = 15
         qteLabel.TextXAlignment = Enum.TextXAlignment.Center
 
-        -- 1.1 Anti Staff (Moved here)
         -- 1.1 Anti Staff (Moved here)
         createToggle(MiscTab, "Anti Staff", false, function(state)
             antiStaffEnabled = state

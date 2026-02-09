@@ -1785,9 +1785,13 @@ local function checkPartVisibility(part, targetModel, myChar)
 end
 
 -- 2. Aim Logic (Optimized)
+-- [ RECYCLE TABLE ]
+local candidates = {}
+
 getClosestTarget = function() -- Removed local, assigned to upvalue
     local mousePos = UserInputService:GetMouseLocation()
-    local candidates = {}
+    table.clear(candidates) -- Use existing table, just clear contents
+    
     local char = LocalPlayer.Character
     local myRoot = char and char:FindFirstChild("HumanoidRootPart")
     if not myRoot then return end
@@ -1849,14 +1853,8 @@ getClosestTarget = function() -- Removed local, assigned to upvalue
             -- Release if Velocity < 5.0 (Covers staggering/shaking animations)
             local isStationary = root.Velocity.Magnitude < 5.0 
             
-            -- Scan for Stun Tags
-            local hasStunTag = false
-            for _, v in ipairs(enemy:GetDescendants()) do
-                if v.Name == "Stun" or v.Name == "Stunned" or v.Name == "Knocked" then
-                    hasStunTag = true
-                    break
-                end
-            end
+            -- Scan for Stun Tags (OPTIMIZED: No GetDescendants Loop)
+            local hasStunTag = enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned") or enemy:FindFirstChild("Knocked")
             
             if isStationary or hasStunTag then continue end
         end
@@ -1894,6 +1892,38 @@ getClosestTarget = function() -- Removed local, assigned to upvalue
             end
         end
 
+        -- [AUTO EXECUTION DETECTION - GENERAL]
+        -- Thay thế check ID thủ công bằng thuật toán hành vi (Heuristic)
+        -- Logic: Nếu quái chạy Animation CHẬM (Speed <= 0.85) và ĐỨNG YÊN (Velocity < 5) -> Coi là đang kết liễu -> Bỏ qua
+        local isExecuting = false
+        if dist3D < 30 then 
+            local animator = humanoid:FindFirstChild("Animator")
+            if animator then
+                local playingTracks = animator:GetPlayingAnimationTracks()
+                for _, track in ipairs(playingTracks) do
+                    -- Dấu hiệu 1: Animation có tốc độ diễn xuất chậm (Cinematic/Grab)
+                    -- (Thông thường đòn đánh là >1.0, chạy là 1.0, nhưng Grab/Execute thường là 0.5 - 0.8)
+                    local isCinematicSpeed = (track.Speed <= 0.85 and track.Speed > 0.1)
+                    
+                    -- Dấu hiệu 2: Tên có từ khóa (Backup phụ trợ)
+                    local lowName = string.lower(track.Name)
+                    local isSuspiciousName = string.find(lowName, "grab") or string.find(lowName, "exec") or string.find(lowName, "kill") or string.find(lowName, "eat")
+
+                    if isCinematicSpeed or isSuspiciousName then
+                        -- Điều kiện quyết định: Quái đang "bận" đứng yên tại chỗ để diễn hoạt cảnh
+                        if root.Velocity.Magnitude < 5.0 then
+                             isExecuting = true
+                             break
+                        end
+                    end
+                end
+            end
+        end
+
+        if isExecuting then 
+            continue -- BỎ QUA QUÁI NÀY (Tự động unlock aim khi quái đang diễn hoạt cảnh chậm)
+        end
+
         -- NEW: Downed/Ragdoll Check (Standard for other enemies)
         local head = enemy:FindFirstChild("Head")
         local headY = head and head.Position.Y or 0
@@ -1927,7 +1957,8 @@ getClosestTarget = function() -- Removed local, assigned to upvalue
             local isFalsePositive = string.find(nameLower, "fireriser") or string.find(nameLower, "riserhazmat") or string.find(nameLower, "slasher")
             
             if not isFalsePositive then
-                local hasStunTag = (enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned"))
+                -- OPTIMIZED: Direct check instead of loop
+                local hasStunTag = enemy:FindFirstChild("Stun") or enemy:FindFirstChild("Stunned") or enemy:FindFirstChild("Knocked")
                 local isStationary = (root.Velocity.Magnitude < 2.0)
                 
                 -- If it's a common enemy, we release completely
@@ -2158,40 +2189,50 @@ end
 
     -- Aim Bot loop moved into ThirdPersonUpdate for synchronization
     -- If Third Person is OFF, we still need a fallback AimBot loop
-    RunService:BindToRenderStep("AimBotUpdate_Static", Enum.RenderPriority.Camera.Value + 1, function()
-        if not ScreenGui.Parent then 
-            RunService:UnbindFromRenderStep("AimBotUpdate_Static")
-            return 
-        end
-
-        -- Only run here if Third Person loop is NOT active (prevent double-update)
-        if not getgenv().ThirdPersonUpdate_Active and aimEnabled and isAiming then
-            local targetPart, targetPos, isShield, velocity, partName, isHighMob, isFacingAway, targetChar = getClosestTarget()
-            if targetPart and targetPos then
-                local currentCF = Camera.CFrame
-                local finalTargetPos = targetPos
-                
-                -- CHỈ hạ thấp tâm nếu KHÔNG PHẢI quái khiên
-                if not isShield then
-                    finalTargetPos = finalTargetPos - (currentCF.UpVector * 0.10)
-                end
-                smoothedVelocity = smoothedVelocity:Lerp(velocity, 0.2)
-                local predictionFactor = isHighMob and 0.12 or 0.06
-                if smoothedVelocity.Magnitude > 1.5 then finalTargetPos = finalTargetPos + (smoothedVelocity * predictionFactor) end
-                if isShield then 
-                    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                    local dist = hrp and (hrp.Position - targetPos).Magnitude or 20
-                    local dynamicRight = aimRightOffset + math.clamp((20 - dist) * 0.022, 0, 0.1)
+    -- Aim Bot loop: PERSISTENT TASK (Self-Healing)
+    task.spawn(function()
+        while true do
+            local dt = RunService.RenderStepped:Wait()
+            if not ScreenGui.Parent then break end -- Exit only if GUI is destroyed (Unloaded)
+            
+            -- Telemetry Check
+            if aimEnabled then
+                local myChar = LocalPlayer.Character
+                if myChar and myChar:FindFirstChild("HumanoidRootPart") then
                     
-                    finalTargetPos = finalTargetPos + (currentCF.RightVector * dynamicRight) + (currentCF.UpVector * aimUpOffset) 
+                    -- Only run here if Third Person loop is NOT active (prevent double-update)
+                    if not getgenv().ThirdPersonUpdate_Active and isAiming then
+                        local targetPart, targetPos, isShield, velocity, partName, isHighMob, isFacingAway, targetChar = getClosestTarget()
+                        
+                        if targetPart and targetPos then
+                            local currentCF = workspace.CurrentCamera.CFrame
+                            local finalTargetPos = targetPos
+                            
+                            -- CHỈ hạ thấp tâm nếu KHÔNG PHẢI quái khiên
+                            if not isShield then
+                                finalTargetPos = finalTargetPos - (currentCF.UpVector * 0.10)
+                            end
+                            smoothedVelocity = smoothedVelocity:Lerp(velocity, 0.2)
+                            local predictionFactor = isHighMob and 0.12 or 0.06
+                            if smoothedVelocity.Magnitude > 1.5 then finalTargetPos = finalTargetPos + (smoothedVelocity * predictionFactor) end
+                            
+                            if isShield then 
+                                local hrp = myChar:FindFirstChild("HumanoidRootPart")
+                                local dist = hrp and (hrp.Position - targetPos).Magnitude or 20
+                                local dynamicRight = aimRightOffset + math.clamp((20 - dist) * 0.022, 0, 0.1)
+                                
+                                finalTargetPos = finalTargetPos + (currentCF.RightVector * dynamicRight) + (currentCF.UpVector * aimUpOffset) 
+                            end
+                            if isFacingAway then 
+                                -- Đẩy sâu vào lưng (0.4) và NHÍCH CAO LÊN (0.1)
+                                finalTargetPos = finalTargetPos - (currentCF.LookVector * 0.4) + (currentCF.UpVector * 0.1) 
+                            end
+                            local targetCF = CFrame.new(currentCF.Position, finalTargetPos)
+                            local lerpSpeed = math.clamp(aimSmoothness * (smoothedVelocity.Magnitude > 5 and (smoothedVelocity.Magnitude/10) or 1), 0.05, 0.8)
+                            workspace.CurrentCamera.CFrame = currentCF:Lerp(targetCF, lerpSpeed)
+                        end
+                    end
                 end
-                if isFacingAway then 
-                    -- Đẩy sâu vào lưng (0.4) và NHÍCH CAO LÊN (0.1)
-                    finalTargetPos = finalTargetPos - (currentCF.LookVector * 0.4) + (currentCF.UpVector * 0.1) 
-                end
-                local targetCF = CFrame.new(currentCF.Position, finalTargetPos)
-                local lerpSpeed = math.clamp(aimSmoothness * (smoothedVelocity.Magnitude > 5 and (smoothedVelocity.Magnitude/10) or 1), 0.05, 0.8)
-                Camera.CFrame = currentCF:Lerp(targetCF, lerpSpeed)
             end
         end
     end)
@@ -2230,142 +2271,126 @@ end
     local staffCheckDebounce = {}
 
 
+-- [ OPTIMIZED ] Event-based Player ESP Manager
     local function managePlayerHighlights()
-    while espEnabled do
-        if not ScreenGui.Parent then break end -- Safety Break
-        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            task.wait(1)
-            continue
-        end
-        
-        local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-        
-        for player, _ in pairs(potentialPlayerTargets) do
-            if not player or not player.Parent then 
-                potentialPlayerTargets[player] = nil
-                staffCache[player] = nil
-                continue 
-            end
-            
-            local char = player.Character
-            if not char or not char:IsDescendantOf(game) then 
-                continue 
-            end
-            
-            local root = char:FindFirstChild("HumanoidRootPart")
-            local humanoid = char:FindFirstChildOfClass("Humanoid")
-            
-            -- HEALTH CHECK: Remove ESP if dead
-            if not root or not humanoid or humanoid.Health <= 0 then 
-                local existingHl = char:FindFirstChild("ESPHighlight")
-                if existingHl then existingHl:Destroy() end
+        while espEnabled do
+            if not ScreenGui.Parent then break end -- Safety Break
+            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                task.wait(1)
                 continue
             end
-
-            -- STATUS CHECKS
-            local isInfected = isPlayerInfected(player)
-            local isFriendly = true -- Every real player is a teammate/friend (PVE logic)
-            local isStaff = staffCache[player]
             
-            if isStaff == nil and not staffCheckDebounce[player] then
-                staffCheckDebounce[player] = true
-                task.spawn(function()
-                    local s, _ = detectStaff(player)
-                    staffCache[player] = s or false
-                    staffCheckDebounce[player] = nil
-                end)
+            local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+            
+            for player, _ in pairs(potentialPlayerTargets) do
+                if not player or not player.Parent then 
+                    potentialPlayerTargets[player] = nil
+                    staffCache[player] = nil
+                    continue 
+                end
+                
+                local char = player.Character
+                if not char or not char:IsDescendantOf(game) then 
+                    continue 
+                end
+                
+                local root = char:FindFirstChild("HumanoidRootPart")
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                
+                -- HEALTH & VOID CHECK: Remove ESP if dead OR fallen out of map
+                -- (Tránh highlight xác chết rơi xuống vực gây lag/rác màn hình)
+                if not root or not humanoid or humanoid.Health <= 0 or root.Position.Y < -50 then 
+                    local existingHl = char:FindFirstChild("ESPHighlight")
+                    if existingHl then existingHl:Destroy() end
+                    continue
+                end
+
+                -- STATUS CHECKS
+                local isInfected = isPlayerInfected(player)
+                local isFriendly = true -- Every real player is a teammate/friend (PVE logic)
+                local isStaff = staffCache[player]
+                
+                if isStaff == nil and not staffCheckDebounce[player] then
+                    staffCheckDebounce[player] = true
+                    task.spawn(function()
+                        local s, _ = detectStaff(player)
+                        staffCache[player] = s or false
+                        staffCheckDebounce[player] = nil
+                    end)
+                end
+                
+                local dist = (root.Position - myPos).Magnitude
+                local hl = char:FindFirstChild("ESPHighlight")
+                
+                -- SLOT MANAGEMENT: Only highlight if < 150 studs (UNLESS STAFF)
+                
+                if dist < 150 or isStaff then
+                    if not hl then
+                        hl = Instance.new("Highlight")
+                        hl.Name = "ESPHighlight"
+                        hl.Adornee = char
+                        hl.FillTransparency = 1 -- Outline only
+                        hl.OutlineTransparency = 0.5 -- Adjusted for balance
+                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        hl.Parent = char 
+                                
+                        -- Failsafe Cleanup
+                        local ancestryConn
+                        ancestryConn = char.AncestryChanged:Connect(function()
+                            if not char:IsDescendantOf(game) then 
+                                if hl then hl:Destroy() end
+                                if ancestryConn then ancestryConn:Disconnect() end
+                            end
+                        end)
+                    end
+
+                    -- UPDATE COLOR
+                    local teamName = player.Team and string.lower(player.Team.Name) or ""
+                    
+                    if isStaff then
+                        hl.FillColor = Color3.fromRGB(255, 0, 255) -- Purple
+                        hl.OutlineColor = Color3.fromRGB(255, 0, 255)
+                    elseif isFriendly then
+                        hl.FillColor = Color3.fromRGB(0, 150, 255) -- Blue
+                        hl.OutlineColor = Color3.fromRGB(0, 150, 255)
+                        hl.FillTransparency = 1
+                    elseif isInfected then
+                        hl.FillColor = Color3.fromRGB(255, 170, 0) -- Orange
+                        hl.OutlineColor = Color3.fromRGB(255, 170, 0)
+                        hl.FillTransparency = 1 
+                    end
+                else
+                    -- Too far, free up the slot
+                    if hl then hl:Destroy() end
+                end
             end
-            
-            local dist = (root.Position - myPos).Magnitude
-            local hl = char:FindFirstChild("ESPHighlight")
-            
-            -- SLOT MANAGEMENT: Only highlight if < 150 studs (UNLESS STAFF)
-            
-            if dist < 90 or isStaff then
-                if not hl then
-                    hl = Instance.new("Highlight")
-                    hl.Name = "ESPHighlight"
-                    hl.Adornee = char
-                    hl.FillTransparency = 1 -- Outline only
-                    hl.OutlineTransparency = 0.5 -- Adjusted for balance (was 0.7)
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Parent = char 
-                            
-    -- Failsafe Cleanup & Death Event
-    local ancestryConn
-    local deathConn
-
-    ancestryConn = char.AncestryChanged:Connect(function()
-        if not char:IsDescendantOf(game) then 
-            if hl then hl:Destroy() end
-            if deathConn then deathConn:Disconnect() end
-            if ancestryConn then ancestryConn:Disconnect() end
+            task.wait(0.5) -- Loop every 0.5s (Balanced)
         end
-    end)
-
-    deathConn = humanoid.Died:Connect(function()
-        if hl then hl:Destroy() end
-        if ancestryConn then ancestryConn:Disconnect() end
-        if deathConn then deathConn:Disconnect() end
-    end)
-    end
-
-    -- UPDATE COLOR
-    local teamName = player.Team and string.lower(player.Team.Name) or ""
-    hl.OutlineTransparency = 0.5 -- Enforce balance on update
-
-    if isStaff then
-    hl.FillColor = Color3.fromRGB(255, 0, 255) -- Purple
-    hl.OutlineColor = Color3.fromRGB(255, 0, 255)
-    elseif isFriendly then
-    -- All real players stay Blue/Teammate color
-    hl.FillColor = Color3.fromRGB(0, 150, 255) -- Blue
-    hl.OutlineColor = Color3.fromRGB(0, 150, 255)
-    hl.FillTransparency = 1
-    elseif isInfected then
-    hl.FillColor = Color3.fromRGB(255, 170, 0) -- Orange
-    hl.OutlineColor = Color3.fromRGB(255, 170, 0)
-    hl.FillTransparency = 1 
-    elseif string.find(teamName, "menlo") then -- Menlo Team (Humans)
-    hl.FillColor = Color3.fromRGB(0, 150, 255) -- Blue
-    hl.OutlineColor = Color3.fromRGB(0, 150, 255)
-    else
-    hl.FillColor = Color3.fromRGB(150, 150, 150) -- Gray
-    hl.OutlineColor = Color3.fromRGB(150, 150, 150)
-    end
-    else
-    -- Too far, free up the slot for Bosses/Nearby Enemies
-    if hl then hl:Destroy() end
-    end
-    end
-    task.wait(0.2)
-    end
     end
 
     local function addESP(player)
-    if player == LocalPlayer then return end
-    potentialPlayerTargets[player] = true
+        if player == LocalPlayer then return end
+        potentialPlayerTargets[player] = true
     end
 
     createToggle(VisualsTab, "Player ESP", false, function(state)
-    espEnabled = state
-    if state then
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer then addESP(plr) end
-        end
-        Players.PlayerAdded:Connect(function(plr)
-            if espEnabled and plr ~= LocalPlayer then addESP(plr) end
-        end)
-        task.spawn(managePlayerHighlights)
-    else
-        clearESP()
-        -- Loop handles cleanup of individual highlights next cycle or manually here if needed
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
-                plr.Character.ESPHighlight:Destroy()
+        espEnabled = state
+        if state then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then addESP(plr) end
+            end
+            Players.PlayerAdded:Connect(function(plr)
+                if espEnabled and plr ~= LocalPlayer then addESP(plr) end
+            end)
+            task.spawn(managePlayerHighlights)
+        else
+            clearESP()
+             for _, plr in ipairs(Players:GetPlayers()) do
+                if plr.Character and plr.Character:FindFirstChild("ESPHighlight") then
+                    plr.Character.ESPHighlight:Destroy()
+                end
             end
         end
-    end
     end)
 
     -- 2. Infect ESP (Enemies) - Optimized Distance Limit
@@ -2388,184 +2413,189 @@ end
 potentialEspTargets = {}
 end
 
-local function manageInfectHighlights()
-local printedBossDebug = {} -- Debounce for debug prints
+-- [ OPTIMIZED ] Event-based Highlight Manager (One-time setup per enemy)
+    local function manageInfectHighlights()
+        -- Loop-based manager to handle distance and slot limits dynamically
+        local printedBossDebug = {} 
 
-while infectEspEnabled do
-    if not ScreenGui.Parent then break end -- Safety Break
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        task.wait(1)
-        continue
+        while infectEspEnabled do
+            if not ScreenGui.Parent then break end -- Safety Break
+            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                task.wait(1)
+                continue
+            end
+            
+            local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+            
+            for model, _ in pairs(potentialEspTargets) do
+                if not model or not model.Parent then 
+                    potentialEspTargets[model] = nil 
+                    continue 
+                end
+
+                local modelName = string.lower(model.Name)
+                local isPlr = Players:GetPlayerFromCharacter(model)
+                if model == LocalPlayer.Character or model.Name == LocalPlayer.Name or isPlr then
+                    potentialEspTargets[model] = nil
+                    local highlight = model:FindFirstChild("InfectHighlight")
+                    if highlight then pcall(function() highlight:Destroy() end) end
+                    continue
+                end
+
+                local root = model:FindFirstChild("HumanoidRootPart")
+                local humanoid = nil
+                local firstHum = nil
+                for _, child in ipairs(model:GetChildren()) do
+                    if child:IsA("Humanoid") then
+                        if not firstHum then firstHum = child end
+                        if child.Health > 0 then
+                            humanoid = child
+                            break
+                        end
+                    end
+                end
+                humanoid = humanoid or firstHum
+                if not humanoid then continue end
+                
+                -- GET CACHED METADATA
+                local meta = entityCache[model]
+                local isBoss = meta and meta.isBoss or false
+                local isElite = meta and meta.elite or false
+                local isViral = meta and (meta.ignoreHealth or string.find(modelName, "viral"))
+
+                -- STATUS CHECKS
+                local velocityMag = root and root.Velocity.Magnitude or 0
+                local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead) or (humanoid.Parent == nil)
+                
+                -- SKIP DEAD/INVALID
+                if isDead and not isFriendlyNPC then
+                    local highlight = model:FindFirstChild("InfectHighlight")
+                    if highlight then pcall(function() highlight:Destroy() end) end
+                    
+                    if (not meta or not meta.isBoss) and velocityMag < 1 then 
+                        potentialEspTargets[model] = nil 
+                    end
+                    continue
+                end
+
+                if root then
+                    local dist = (root.Position - myPos).Magnitude
+                    
+                    -- Distance Sanity Check
+                    if isDead and dist < 2 then 
+                        potentialEspTargets[model] = nil 
+                        local highlight = model:FindFirstChild("InfectHighlight")
+                        if highlight then highlight:Destroy() end
+                        continue
+                    end
+
+                    local maxDist = (isBoss) and 2000 or 90
+                    local highlight = model:FindFirstChild("InfectHighlight")
+                    
+                    if dist < maxDist then
+                        local hl = highlight
+                        if not hl then
+                            hl = Instance.new("Highlight")
+                            hl.Name = "InfectHighlight"
+                            hl.Adornee = model
+                            hl.FillTransparency = 1
+                            hl.OutlineTransparency = 0.5 -- Adjusted for balance
+                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            hl.Parent = model
+                            
+                            -- Basic Cleanup (Backup)
+                            local conn
+                            conn = model.AncestryChanged:Connect(function()
+                                if not model.Parent then
+                                    if hl then hl:Destroy() end
+                                    if conn then conn:Disconnect() end
+                                end
+                            end)
+                        end
+
+                        hl.OutlineTransparency = 0.5 
+
+                        if isBoss then
+                            hl.FillColor = Color3.fromRGB(130, 0, 255)
+                            hl.OutlineColor = Color3.fromRGB(200, 100, 255)
+                            hl.FillTransparency = 1 
+                        elseif isElite then
+                            hl.FillColor = Color3.fromRGB(255, 140, 0) -- Orange
+                            hl.OutlineColor = Color3.fromRGB(255, 200, 0) 
+                            hl.FillTransparency = 1 
+                        else
+                            hl.FillColor = Color3.fromRGB(255, 0, 0) -- Red
+                            hl.OutlineColor = Color3.fromRGB(255, 0, 0)
+                            hl.FillTransparency = 1
+                        end
+                    else
+                        if highlight then highlight:Destroy() end
+                    end
+                end
+            end
+            task.wait(0.5) -- Loop every 0.5s (Balanced)
+        end
     end
-    
-    local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-    
-    for model, _ in pairs(potentialEspTargets) do
-        if not model or not model.Parent then 
-            potentialEspTargets[model] = nil 
-            continue 
-        end
 
-        local modelName = string.lower(model.Name)
-        local isPlr = Players:GetPlayerFromCharacter(model)
-        if model == LocalPlayer.Character or model.Name == LocalPlayer.Name or isPlr then
-            potentialEspTargets[model] = nil
-            local highlight = model:FindFirstChild("InfectHighlight")
-            if highlight then pcall(function() highlight:Destroy() end) end
-            continue
-        end
+    local function addInfectESP(model)
+        if not infectEspEnabled then return end
+        if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return end
+        if Players:GetPlayerFromCharacter(model) or Players:FindFirstChild(model.Name) then return end
 
+        local humanoid = model:FindFirstChildOfClass("Humanoid")
+        if not humanoid then return end
+
+        if Camera.CameraSubject == humanoid then return end
+
+        -- SMART FILTER
         local root = model:FindFirstChild("HumanoidRootPart")
-        local humanoid = nil
-        local firstHum = nil
-        for _, child in ipairs(model:GetChildren()) do
-            if child:IsA("Humanoid") then
-                if not firstHum then firstHum = child end
-                if child.Health > 0 then
-                    humanoid = child
+        if not root then return end
+
+        local function isValidEnemy()
+            -- 0. Strict Self Check & Player Check
+            if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
+            if Players:GetPlayerFromCharacter(model) or Players:FindFirstChild(model.Name) then return false end
+
+            -- 0.1 Name Blacklist (Prop filter)
+            if isNPCBlacklisted(model.Name) then return false end
+            
+            -- 0.2 Statue/Decoration Filter (IMPORTANT FIX)
+            local isSleeping = false
+            local lowName = string.lower(model.Name)
+            for _, sName in ipairs(sleepingEnemies) do
+                if string.find(lowName, sName) then
+                    isSleeping = true
                     break
                 end
             end
-        end
-        humanoid = humanoid or firstHum
-        if not humanoid then continue end
-        
-        -- GET CACHED METADATA
-        local meta = entityCache[model]
-        local isBoss = meta and meta.isBoss or false
-        local isElite = meta and meta.elite or false
-        local isViral = meta and (meta.ignoreHealth or string.find(modelName, "viral"))
 
-        -- MONSTER DETECTION
-        -- If it's not an active player character, it's a monster (Red ESP)
+            local parentName = model.Parent and string.lower(model.Parent.Name) or ""
+            local isMapObject = string.find(parentName, "decor") or string.find(parentName, "map") or string.find(parentName, "statue") or string.find(parentName, "prop")
 
-        -- STATUS CHECKS
-        local velocityMag = root and root.Velocity.Magnitude or 0
-        local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead) or (humanoid.Parent == nil)
-        
-        -- SKIP DEAD/INVALID
-        -- Monsters must be cleared immediately when health hits 0.
-        -- ONLY Transformed Players (isFriendlyNPC) stay highlighted while dead/downed.
-        if isDead and not isFriendlyNPC then
-            local highlight = model:FindFirstChild("InfectHighlight")
-            if highlight then pcall(function() highlight:Destroy() end) end
-            
-            -- Remove from tracker if it's a standard monster and has stopped moving
-            if (not meta or not meta.isBoss) and velocityMag < 1 then 
-                potentialEspTargets[model] = nil 
+            if (root.Anchored or isMapObject) and not isSleeping then 
+                return false 
             end
-            continue
+            
+            -- 0.3 Target Check
+            local targetData = getTargetData(model.Name)
+            if targetData then return true end
+
+            -- 1. Default: If it's a valid humanoid NPC (non-player), show it
+            return true
         end
 
-        if root then
-            local dist = (root.Position - myPos).Magnitude
-            
-            -- Distance Sanity Check: Remove if dead and close (except players)
-            if isDead and dist < 2 then 
-                potentialEspTargets[model] = nil 
-                local highlight = model:FindFirstChild("InfectHighlight")
-                if highlight then highlight:Destroy() end
-                continue
-            end
-
-            local maxDist = (isBoss) and 2000 or 90
-            local highlight = model:FindFirstChild("InfectHighlight")
-            
-            if dist < maxDist then
-                local hl = highlight
-                if not hl then
-                    hl = Instance.new("Highlight")
-                    hl.Name = "InfectHighlight"
-                    hl.Adornee = model
-                    hl.FillTransparency = 1
-                    hl.OutlineTransparency = 0.5 -- Adjusted for balance (was 0.1)
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Parent = model
+        local function tryAdd()
+            if isValidEnemy() then
+                if not potentialEspTargets[model] then
+                    potentialEspTargets[model] = true
                 end
-
-                hl.OutlineTransparency = 0.5 -- Enforce balance on update
-
-                if isBoss then
-                    hl.FillColor = Color3.fromRGB(130, 0, 255)
-                    hl.OutlineColor = Color3.fromRGB(200, 100, 255)
-                    hl.FillTransparency = 1 
-                elseif isElite then
-                    hl.FillColor = Color3.fromRGB(255, 140, 0) -- Orange
-                    hl.OutlineColor = Color3.fromRGB(255, 200, 0) 
-                    hl.FillTransparency = 1 
-                else
-                    hl.FillColor = Color3.fromRGB(255, 0, 0) -- Red
-                    hl.OutlineColor = Color3.fromRGB(255, 0, 0)
-                    hl.FillTransparency = 1
-                end
-            else
-                if highlight then highlight:Destroy() end
             end
         end
-    end
-    task.wait(0.2) -- Fast Update (Matched to Player ESP for performance)
-end
-end
 
-local function addInfectESP(model)
-if not infectEspEnabled then return end
-if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return end
-if Players:GetPlayerFromCharacter(model) or Players:FindFirstChild(model.Name) then return end
+        if isValidEnemy() then
+            tryAdd()
+        else
 
-local humanoid = model:FindFirstChildOfClass("Humanoid")
-if not humanoid then return end
-
-if Camera.CameraSubject == humanoid then return end
-
--- SMART FILTER (Event-Driven)
-local root = model:FindFirstChild("HumanoidRootPart")
-if not root then return end
-
-local function isValidEnemy()
-    -- 0. Strict Self Check & Player Check
-    if model == LocalPlayer.Character or model.Name == LocalPlayer.Name then return false end
-    if Players:GetPlayerFromCharacter(model) or Players:FindFirstChild(model.Name) then return false end
-
-    -- 0.1 Name Blacklist (Prop filter)
-    if isNPCBlacklisted(model.Name) then return false end
-    
-    -- 0.2 Statue/Decoration Filter (IMPORTANT FIX)
-    -- Check if it's anchored OR inside a map/decoration folder
-    local isSleeping = false
-    local lowName = string.lower(model.Name)
-    for _, sName in ipairs(sleepingEnemies) do
-        if string.find(lowName, sName) then
-            isSleeping = true
-            break
-        end
-    end
-
-    local parentName = model.Parent and string.lower(model.Parent.Name) or ""
-    local isMapObject = string.find(parentName, "decor") or string.find(parentName, "map") or string.find(parentName, "statue") or string.find(parentName, "prop")
-
-    if (root.Anchored or isMapObject) and not isSleeping then 
-        return false 
-    end
-    
-    -- 0.3 Target Check (Now safe from statues)
-    local targetData = getTargetData(model.Name)
-    if targetData then return true end
-
-    -- 1. Default: If it's a valid humanoid NPC (non-player), show it
-    return true
-end
-
-local function tryAdd()
-    if isValidEnemy() then
-        if not potentialEspTargets[model] then
-            potentialEspTargets[model] = true
-        end
-    end
-end
-
-if isValidEnemy() then
-    tryAdd()
-else
     -- Listen for state changes (Anchored -> Unanchored)
     local anchorConn
     anchorConn = root:GetPropertyChangedSignal("Anchored"):Connect(function()
@@ -2916,18 +2946,38 @@ task.spawn(function()
     qteLabel.TextXAlignment = Enum.TextXAlignment.Center
 
     -- 1.1 Anti Staff (Moved here)
+    -- 1.1 Anti Staff (Moved here)
     createToggle(MiscTab, "Anti Staff", false, function(state)
-    antiStaffEnabled = state
-    antiStaffAutoLeave = state -- Combined: Enabling detection also enables auto-leave
-    antiStaffGroupId = 34159688 -- Hardcoded for this game
+        antiStaffEnabled = state
+        antiStaffAutoLeave = state -- Combined: Enabling detection also enables auto-leave
+        antiStaffGroupId = 34159688 -- Hardcoded for this game
 
-    if state then
-        -- Check existing players
-        for _, plr in ipairs(Players:GetPlayers()) do
-            local isStaff, reason = detectStaff(plr)
-            if isStaff then handleStaffDetection(plr, reason) end
+        if state then
+            -- Initial Check existing players
+            for _, plr in ipairs(Players:GetPlayers()) do
+                local isStaff, reason = detectStaff(plr)
+                if isStaff then handleStaffDetection(plr, reason) end
+            end
+            
+            -- [NEW] Periodic Background Check (Every 10s)
+            -- Catches existing players who might change rank or load in late
+            task.spawn(function()
+                while antiStaffEnabled do
+                    if not ScreenGui.Parent then break end
+                    
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                         -- Skip check if recently checked (handled primarily by PlayerAdded)
+                         -- But force re-check periodically to catch role changes
+                        local isStaff, reason = detectStaff(plr)
+                        if isStaff then 
+                            handleStaffDetection(plr, reason)
+                            break -- Found one, no need to check others, we are leaving
+                        end
+                    end
+                    task.wait(10) -- Low frequency check
+                end
+            end)
         end
-    end
     end)
 
     workspace.DescendantAdded:Connect(function(obj)
@@ -2968,6 +3018,67 @@ task.spawn(function()
     end)
 
     -- Connections are managed at the top of the script now
+
+    -- [ CLEANUP LOOP: Remove Dead/Far Enemies to Prevent Lag ]
+    -- [ CLEANUP LOOP: Remove Dead/Far Enemies AND Stale Cache to Prevent Lag ]
+    task.spawn(function()
+        while true do
+            task.wait(5) -- Run every 5 seconds (Slightly reduced frequency to save CPU)
+            if not ScreenGui.Parent then break end -- Stop if GUI is destroyed
+
+            -- 1. Clean 'validEnemies' list (The active aimbot list)
+            for i = #validEnemies, 1, -1 do
+                local enemy = validEnemies[i]
+                
+                local shouldRemove = false
+                if not enemy or not enemy.Parent then
+                    shouldRemove = true
+                else
+                    local hum = enemy:FindFirstChildOfClass("Humanoid")
+                    local root = enemy:FindFirstChild("HumanoidRootPart")
+                     -- Remove if: No Root, Dead, or Too Far (> 1500 studs - relaxed limit)
+                    if not hum or not root or (hum.Health <= 0) then
+                        shouldRemove = true
+                    elseif (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) then
+                        local dist = (LocalPlayer.Character.HumanoidRootPart.Position - root.Position).Magnitude
+                        if dist > 1500 then -- Only remove really far entities
+                            shouldRemove = true
+                        end
+                    end
+                end
+
+                if shouldRemove then
+                    table.remove(validEnemies, i)
+                    -- Also clear from caches immediately
+                    if enemy then
+                        entityCache[enemy] = nil
+                        targetCache[enemy] = nil
+                    end
+                end
+            end
+
+            -- 2. Deep Clean Cache (Garbage Collection for Stale Entries)
+            -- This catches entities that might have been missed or leftovers
+            for model, _ in pairs(entityCache) do
+                if not model or not model.Parent then
+                    entityCache[model] = nil
+                end
+            end
+            
+            for model, _ in pairs(targetCache) do
+                if not model or not model.Parent then
+                   targetCache[model] = nil
+                end
+            end
+             -- Also clean ESP tracker
+            for model, _ in pairs(potentialEspTargets) do
+                if not model or not model.Parent then
+                    potentialEspTargets[model] = nil
+                end
+            end
+        end
+    end)
+
 
 -- [ CLEANUP LOGIC ]
 cleanupGUI = function()

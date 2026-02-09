@@ -1,0 +1,555 @@
+--[[
+    Advanced Aimbot for "Examination" (Roblox)
+    Author: Antigravity
+    
+    Features:
+    + Target Prioritization (Distance/Crosshair)
+    + Smoothing / Interpolation
+    + Prediction (Velocity-based)
+    + FOV-based Assist
+    + Line-of-Sight Check
+    + Deadzone
+    + CollectionService + Attribute Target Identification
+    + Auto-Cleanup (Prevents multiple execution errors)
+]]
+
+--// SERVICES //--
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local CollectionService = game:GetService("CollectionService")
+local GuiService = game:GetService("GuiService")
+
+--// CLEANUP SYSTEM //--
+-- Checks for existing execution and cleans up connections/drawings
+if getgenv().AimbotCleanup then
+    getgenv().AimbotCleanup()
+end
+
+--// VARIABLES & STATE //--
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+local State = {
+    Aiming = false,
+    CurrentTarget = nil,
+    Connections = {},
+    Drawings = {}
+}
+
+--// SETTINGS //--
+local Settings = {
+    -- Keybinds
+    Enabled = true,
+    Keybind = Enum.UserInputType.MouseButton2, -- Right Click
+    ToggleMode = false, -- False = Hold, True = Toggle
+    
+    -- Aim Method
+    AimMethod = "Camera", -- "Mouse" (Legit/Smooth) or "Camera" (Lock/Blatant)
+    
+    -- Target Selection
+    TargetPart = "Head", -- CHANGED: Prioritize Head for headshots
+    
+    -- Identification Method
+    UseUniversalNPC = false, -- Disabled to use strict Name List below
+    
+    UseCollectionService = false, 
+    TargetTag = "Enemy", 
+    
+    UseAttributes = false, 
+    TargetAttribute = "Enemy", 
+    
+    UseTargetName = true, -- ENABLED: Only target names in the list below
+    TargetNameList = {
+        "FuryLab",
+        "LurkerEngineer",
+        "LurkerLab2",
+        "FuryLab2",
+        "RIF KS3",
+        "RIF STATIONARY3",
+        "Mutant2",
+        "Mutant4",
+        "AAAAA",
+        "Gunner3 (RSU)",
+        "Gunner3 (RSU)",
+        "S3 Slasher2",
+        "Mutant3",
+        "Gunner5 (Lab)",
+        "Shielder4 (Dreadnought) (MGF)",
+        "SIN",
+        "FireRiser",
+        "RIF KS1",
+        "RIF AK7",
+        "Bomber",
+        "Slasher2 (RSU)",
+        "Chimera",
+        "RIF AK2",
+        "RIF KS5",
+        "RIF AK6",
+        "RiserS3",
+        "Combat Engineer",
+        "LurkerLab3",
+        "RiserHazmat2",
+        "RIF KS2",
+        "CrawlerWelder",
+        "RiserHazmat",
+        "Mutant crawler1",
+        "RiserRIF",
+        "RIF STATIONARY1",
+        "LurkerWelder",
+        "LurkerWelder2",
+        "Shielder1 (Dreadnought) (RSU)",
+        "Mutant5",
+        "Chemical",
+        "RIF AK1",
+        "RIF STATIONARY2",
+        "Bomber2",
+        "RIF STATIONARY5",
+        "RIF STATIONARY LMG1",
+        "FireSlasher",
+        "Mutant crawler2",
+        "S3 Bomber",
+        "Mutant1",
+        "Toxic1",
+        "Shielder5 (Dreadnought) (RSU)",
+        "Bomber3",
+        "RIF KS4",
+        "Gunner1 (Lab)",
+        "Slasher3 (RSU)",
+        "RIF STATIONARY4",
+        "LurkerRSU",
+        "Gunner4 (RSU)",
+        "Gunner2 (MPD)",
+        "Gilbert",
+        "Mikhail",
+        "FireRiser",
+        "RiserHazmat", -- NEW TARGET
+        "ViralCommander",
+        "ViralCorpsman", -- Another Infected Player Variant
+        "ViralPointman",
+        "ViralArrowhead", -- Another Infected Player Variant
+        "ViralParamedic", -- Another Infected Player Variant
+        "ViralBreacher", -- Another Infected Player Variant
+        "ViralRecon", -- Another Infected Player Variant
+        "ViralLeader", -- Another Infected Player Variant
+    },
+    
+    CheckTeam = false, -- Ignore teammates
+    
+    -- Visuals
+    HighlightTarget = false, -- DISABLED: Removes green square around target
+    
+    -- Debugging
+    DebugMode = true, -- Prints found targets and their info to console (F9)
+    
+    -- Aimbot Mechanics
+    AutoTargetSwitch = true, -- If true, always switches to the closest target in FOV
+    Smoothing = 0.2, -- 0.05 to 0.5 (Lower = Snappier, Higher = Smoother)
+    Prediction = 0.145, -- Prediction factor (adjust based on ping/bullet speed)
+    Deadzone = 4, -- Deadzone radius in pixels (stops jittering)
+    
+    -- FOV
+    UseFOV = true,
+    FOVRadius = 300,
+    ShowFOV = false, -- REMOVED: Circle will not be drawn
+    FOVColor = Color3.fromRGB(235, 64, 52),
+    
+    -- Visibility
+    WallCheck = true, -- ENABLED: Line-of-sight check (won't aim through walls)
+    
+    -- Special Logic
+    ShielderOffset = 0.5, -- Studs to offset right for Shielders
+    
+    -- Execution/Invulnerability Check
+    IgnoreExecution = true, -- If true, aimbot skips enemies playing specific animations
+    IgnoredAnimKeywords = {"grab", "execute", "kill", "finish", "cinematic", "stun", "knockdown"}, -- Lowercase keywords
+    IgnoredAnimIDs = { -- Specific IDs if names are generic
+        "97242562790139", -- Boss Chimera Example
+        "128010889227844", 
+        "180436334", -- Found in User Log
+    },
+}
+
+--// DRAWING SETUP //--
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = Settings.ShowFOV
+FOVCircle.Thickness = 1.5
+FOVCircle.Radius = Settings.FOVRadius
+FOVCircle.Transparency = 1
+FOVCircle.Color = Settings.FOVColor
+FOVCircle.NumSides = 64
+FOVCircle.Filled = false
+table.insert(State.Drawings, FOVCircle)
+
+local TargetHighlight = Drawing.new("Square")
+TargetHighlight.Visible = false
+TargetHighlight.Color = Color3.fromRGB(0, 255, 0)
+TargetHighlight.Thickness = 1.5
+TargetHighlight.Filled = false
+table.insert(State.Drawings, TargetHighlight)
+
+--// TARGET CACHING SYSTEM //--
+-- Scanning GetDescendants every frame is laggy, so we verify potential targets periodically.
+local TargetCache = {}
+
+local function RefreshTargetCache()
+    table.clear(TargetCache)
+    
+    -- Optimized Descendant Scan
+    for _, model in ipairs(Workspace:GetDescendants()) do
+        if model:IsA("Model") then
+             -- Quick checks before expensive validation
+            if model:FindFirstChildWhichIsA("Humanoid") then
+                 table.insert(TargetCache, model)
+            end
+        end
+    end
+    -- print("Cache Refreshed: " .. #TargetCache .. " potential targets.")
+end
+
+-- Refresh cache every 3 seconds
+task.spawn(function()
+    while true do
+        RefreshTargetCache()
+        task.wait(3)
+    end
+end)
+
+--// HELPER FUNCTIONS //--
+
+local function Cleanup()
+    for _, conn in ipairs(State.Connections) do
+        if conn then conn:Disconnect() end
+    end
+    for _, drawing in ipairs(State.Drawings) do
+        if drawing.Remove then drawing:Remove() end
+    end
+    table.clear(State.Connections)
+    table.clear(State.Drawings)
+end
+
+-- Save cleanup to global env
+getgenv().AimbotCleanup = Cleanup
+
+local function IsValidTarget(model)
+    if not model or not model.Parent then return false end
+    if model == LocalPlayer.Character then return false end 
+    if model.Parent == Camera then return false end -- Ignore Viewmodels in Camera
+    if string.find(string.lower(model.Name), "viewmodel") then return false end -- Ignore anything named 'viewmodel'
+    
+    -- Loose Checks: Look for ANY sign of life
+    local humanoid = model:FindFirstChildWhichIsA("Humanoid") or model:FindFirstChild("AnimationController")
+    local rootPart = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso") or model:FindFirstChild("Head")
+    
+    if not rootPart then return false end
+    
+    -- HEALTH CHECK: If it's dead, ignore it
+    if humanoid and humanoid:IsA("Humanoid") and humanoid.Health <= 0 then
+        return false 
+    end
+
+    -- 3. Execution/Invulnerability/Stun Check (Moved UP for Priority)
+    if Settings.IgnoreExecution and humanoid then
+        -- Check Humanoid State (PlatformStand often used for knocked down enemies)
+        if humanoid.PlatformStand then return false end
+        if humanoid:GetState() == Enum.HumanoidStateType.Physics then return false end
+        if humanoid:GetState() == Enum.HumanoidStateType.FallingDown then return false end -- NEW: Found by StunDebugger!
+        if humanoid:GetState() == Enum.HumanoidStateType.Seated then return false end -- Common for forced animations
+
+        -- Check HumanoidRootPart: If Anchored, likely executing a script/cinematic
+        if rootPart and rootPart.Anchored then return false end
+
+        local animator = humanoid:FindFirstChild("Animator")
+        if animator then
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                if track.IsPlaying then
+                    -- Check Keywords in Name
+                    local animName = string.lower(track.Animation.Name)
+                    for _, keyword in ipairs(Settings.IgnoredAnimKeywords) do
+                        if string.find(animName, keyword) then
+                            if Settings.DebugMode then
+                                -- warn("Skipping Execution/Stun: " .. model.Name .. " | Anim: " .. animName)
+                            end
+                            return false
+                        end
+                    end
+                    
+                    -- Check Specific IDs
+                    local animId = track.Animation.AnimationId
+                    -- Extract number from "rbxassetid://12345"
+                    local idNum = string.match(animId, "%d+")
+                    for _, badId in ipairs(Settings.IgnoredAnimIDs) do
+                        if idNum == badId or animId == badId then
+                            return false
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- 1. Player Check
+    local player = Players:GetPlayerFromCharacter(model)
+    if player then
+        if player == LocalPlayer then return false end
+        if Settings.CheckTeam and player.Team == LocalPlayer.Team then return false end
+    end
+    
+    -- 2. NPC Checks
+    -- Check for Universal Mode (Targets any non-player Humanoid)
+    if Settings.UseUniversalNPC and not player then
+        return true
+    end
+
+    local function checkObj(obj)
+        if not obj then return false end
+        -- Check Attribute
+        if Settings.UseAttributes then
+            local attr = obj:GetAttribute(Settings.TargetAttribute)
+            if attr == true or attr ~= nil then return true end
+        end
+        -- Check Tag
+        if Settings.UseCollectionService and CollectionService:HasTag(obj, Settings.TargetTag) then
+            return true
+        end
+        return false
+    end
+    
+    -- Check Model, Humanoid, and RootPart for Tags/Attributes
+    if checkObj(model) or checkObj(humanoid) or checkObj(rootPart) then
+        return true
+    end
+    
+    -- Check Name
+    if Settings.UseTargetName then
+        for _, name in ipairs(Settings.TargetNameList) do
+            if model.Name == name or string.find(model.Name, name) then
+                return true
+            end
+        end
+    end
+    
+    return false
+end
+
+local function IsVisible(target, part)
+    if not Settings.WallCheck then return true end
+    
+    local origin = Camera.CFrame.Position
+    local direction = part.Position - origin
+    local params = RaycastParams.new()
+    
+    -- ONLY filter LocalPlayer and Camera. 
+    -- We MUST let the ray hit the target to confirm it's the first thing we see.
+    params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.IgnoreWater = true
+    
+    local result = Workspace:Raycast(origin, direction, params)
+    
+    -- If hit nothing (reached point with no obstruction) -> Visible
+    if not result then return true end
+    
+    -- If hit something:
+    -- Check if it belongs to the target character
+    if result.Instance:IsDescendantOf(target) then
+        return true
+    end
+    
+    -- Hit something else (Wall, Prop, etc.)
+    -- STRICT CHECK: No transparency/CanCollide bypasses. If it hits, it blocks.
+    return false
+end
+
+local function GetClosestTarget()
+    local bestTarget = nil
+    local shortestDistance = math.huge
+    local mousePos = UserInputService:GetMouseLocation()
+    
+    local potentialTargets = {}
+    
+    -- 1. Get Players
+    for _, v in ipairs(Players:GetPlayers()) do
+        if v.Character and v ~= LocalPlayer then 
+            table.insert(potentialTargets, v.Character) 
+        end
+    end
+    
+    -- 2. Get Cached NPCs
+    for _, v in ipairs(TargetCache) do
+        table.insert(potentialTargets, v)
+    end
+    
+    for _, char in ipairs(potentialTargets) do
+        if IsValidTarget(char) then
+            -- Fallback target part if specific one doesn't exist
+            local part = char:FindFirstChild(Settings.TargetPart) or char:FindFirstChild("Head") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart")
+            
+            if part then
+                local vector, onScreen = Camera:WorldToViewportPoint(part.Position)
+                
+                if onScreen then
+                    local screenPoint = Vector2.new(vector.X, vector.Y)
+                    local dist = (screenPoint - mousePos).Magnitude
+                    
+                    if Settings.DebugMode and dist < 500 then
+                        -- print("Target Candidate: " .. char.Name .. " | Dist: " .. math.floor(dist))
+                    end
+
+                    -- Check FOV
+                    if (not Settings.UseFOV) or (dist <= Settings.FOVRadius) then
+                        -- Check Visibility
+                        if IsVisible(char, part) then
+                            if dist < shortestDistance then
+                                shortestDistance = dist
+                                bestTarget = char
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return bestTarget
+end
+
+--// MAIN LOOP //--
+local function Update()
+    -- Update FOV Circle
+    FOVCircle.Position = UserInputService:GetMouseLocation()
+    FOVCircle.Radius = Settings.FOVRadius
+    FOVCircle.Color = Settings.FOVColor
+    
+    if Settings.Enabled and Settings.ShowFOV then
+        FOVCircle.Visible = true
+    else
+        FOVCircle.Visible = false
+    end
+
+    if State.Aiming and Settings.Enabled then
+        local prevTarget = State.CurrentTarget
+        
+        -- Logic: If AutoSwitch is on, we always update Target.
+        -- If off, we only find new target if we lost the current one.
+        if Settings.AutoTargetSwitch then
+             State.CurrentTarget = GetClosestTarget()
+        else
+            -- Find target if we don't have one or current is invalid
+            if not State.CurrentTarget or not IsValidTarget(State.CurrentTarget) or not IsVisible(State.CurrentTarget, State.CurrentTarget[Settings.TargetPart]) then
+                State.CurrentTarget = GetClosestTarget()
+            end
+        end
+        
+        -- Change Log
+        if State.CurrentTarget and State.CurrentTarget ~= prevTarget then
+            print(">> AIMBOT TARGET: " .. State.CurrentTarget.Name)
+        end
+        
+        -- If we have a target, aim at it
+        if State.CurrentTarget then
+            local part = State.CurrentTarget[Settings.TargetPart]
+            local root = State.CurrentTarget:FindFirstChild("HumanoidRootPart")
+            
+            if part and root then
+                -- Update Highlight
+                if Settings.HighlightTarget then
+                    local vector, onScreen = Camera:WorldToViewportPoint(part.Position)
+                    if onScreen then
+                        TargetHighlight.Visible = true
+                        TargetHighlight.Position = Vector2.new(vector.X - 25, vector.Y - 25)
+                        TargetHighlight.Size = Vector2.new(50, 50)
+                    else
+                        TargetHighlight.Visible = false
+                    end
+                end
+
+                -- Calculation with Prediction
+                local velocity = root.Velocity
+                local predictedPos = part.Position + (velocity * Settings.Prediction)
+                
+                -- SPECIAL LOGIC: SHIELDER BYPASS
+                -- If target is a Shielder AND we are in front of them (they are looking at us), aim to the right.
+                if string.find(string.lower(State.CurrentTarget.Name), "shielder") then
+                    local targetLook = root.CFrame.LookVector
+                    local directionToPlayer = (Camera.CFrame.Position - root.Position).Unit
+                    
+                    -- Dot Product Check
+                    -- > 0: Player is in front (In view angle)
+                    -- < 0: Player is behind (Flanking)
+                    if targetLook:Dot(directionToPlayer) > 0.2 then 
+                         -- Only offset if we are actually facing their shield
+                        predictedPos = predictedPos + (Camera.CFrame.RightVector * Settings.ShielderOffset)
+                        
+                        if Settings.DebugMode then
+                             -- print("Bypassing Shield...")
+                        end
+                    end
+                end
+                
+                local screenPos, onScreen = Camera:WorldToViewportPoint(predictedPos)
+                
+                if onScreen then
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local target2D = Vector2.new(screenPos.X, screenPos.Y)
+                    local diff = target2D - mousePos
+                    local magnitude = diff.Magnitude
+                    
+                    -- Deadzone Check
+                    if magnitude > Settings.Deadzone then
+                        -- Method 1: Camera Lock (Stronger)
+                        if Settings.AimMethod == "Camera" then
+                            local alpha = Settings.Smoothing
+                             -- Lerp CFrame
+                            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, predictedPos), alpha)
+                        
+                        -- Method 2: Mouse Movement (Legit)
+                        elseif Settings.AimMethod == "Mouse" then
+                            if mousemoverel then
+                                local moveX = diff.X * Settings.Smoothing / 2 
+                                local moveY = diff.Y * Settings.Smoothing / 2
+                                mousemoverel(moveX, moveY)
+                            end
+                        end
+                    end
+                else
+                    -- Target went off screen, release
+                    State.CurrentTarget = nil
+                end
+            end
+        end
+    else
+        State.CurrentTarget = nil
+        TargetHighlight.Visible = false
+    end
+end
+
+table.insert(State.Connections, RunService.RenderStepped:Connect(Update))
+
+--// INPUT HANDLING //--
+table.insert(State.Connections, UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    
+    if input.UserInputType == Settings.Keybind or input.KeyCode == Settings.Keybind then
+        if Settings.ToggleMode then
+            State.Aiming = not State.Aiming
+        else
+            State.Aiming = true
+        end
+    end
+end))
+
+table.insert(State.Connections, UserInputService.InputEnded:Connect(function(input, gpe)
+    if Settings.ToggleMode then return end
+    
+    if input.UserInputType == Settings.Keybind or input.KeyCode == Settings.Keybind then
+        State.Aiming = false
+        State.CurrentTarget = nil
+    end
+end))
+
+print("Antigravity AimBot Loaded. Settings:")
+print(" - Target Mode: CollectionService/Attribute/Player")
+print(" - Logic: Smoothing, Prediction, Deadzone, WallCheck")

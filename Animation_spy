@@ -1,0 +1,93 @@
+    -- [[ ULTRA ANIMATION SPY - EVENT BASED ]]
+    -- Script này sử dụng sự kiện (Event) nên sẽ KHÔNG BAO GIỜ BỎ SÓT animation nào.
+    -- Bất kể quái ở xa hay gần, chỉ cần animation chạy là nó sẽ in ra.
+
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+
+    local trackedModels = {}
+    local outputCache = {}
+
+    local TARGET_NAME = "Slasher2 (RSU)" -- [CẤU HÌNH] Đã chỉnh đúng tên như hình bạn gửi
+
+    print("---------------------------------------------------------------")
+    print(" [ ULTRA SPY ACTIVATED ]")
+    print(" >> Đang lọc tìm quái vật có tên chứa: " .. TARGET_NAME)
+    print(" >> Bất kỳ Animation nào chạy sẽ hiện ngay lập tức.")
+    print("---------------------------------------------------------------")
+
+    local function onAnimationPlayed(animTrack, model)
+        -- Filter Name (Plain Text Search to handle named like "Slasher (RSU)")
+        if TARGET_NAME ~= "" and not string.find(string.lower(model.Name), string.lower(TARGET_NAME), 1, true) then
+            return
+        end
+
+        local id = animTrack.Animation.AnimationId
+        local name = animTrack.Name
+        local speed = animTrack.Speed
+        
+        -- Filter Spam (Chỉ in 1 lần mỗi 2 giây cho cùng 1 animation)
+        local key = model.Name .. id
+        if outputCache[key] and (tick() - outputCache[key] < 2) then return end
+        outputCache[key] = tick()
+
+        -- Highlight model đang diễn hoạt
+        if not model:FindFirstChild("SpyHighlight") then
+            local hl = Instance.new("Highlight")
+            hl.Name = "SpyHighlight"
+            hl.FillColor = Color3.fromRGB(255, 0, 0)
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.Parent = model
+            game:GetService("Debris"):AddItem(hl, 1) -- Highlight nháy lên 1s rồi tắt
+        end
+
+        local root = model:FindFirstChild("HumanoidRootPart")
+        local vel = root and root.Velocity.Magnitude or 0
+
+        warn(string.format(">> [DETECT] %s | Anim: %s (%s) | Spd: %.2f | Vel: %.1f", 
+            model.Name, name, id, speed, vel))
+    end
+
+    local function hookModel(model)
+        if trackedModels[model] then return end
+        if model == LocalPlayer.Character then return end
+        if Players:GetPlayerFromCharacter(model) then return end -- Bỏ qua người chơi khác
+
+        local hum = model:FindFirstChild("Humanoid")
+        local animator = hum and hum:FindFirstChild("Animator")
+        
+        if animator then
+            -- Notify User found
+            if string.find(string.lower(model.Name), string.lower(TARGET_NAME), 1, true) then
+                print(" >> [HOOKED] Đã tìm thấy & theo dõi: " .. model.Name)
+            end
+
+            trackedModels[model] = true
+            -- [MẠNH MẼ] Dùng Event AnimationPlayed thay vì quét vòng lặp
+            animator.AnimationPlayed:Connect(function(track)
+                onAnimationPlayed(track, model)
+            end)
+            
+            -- In ra các animation đang chạy sẵn (trường hợp hook chậm)
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                onAnimationPlayed(track, model)
+            end
+        end
+    end
+
+    -- 1. Quét toàn bộ map hiện tại
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and v:FindFirstChild("Humanoid") then
+            hookModel(v)
+        end
+    end
+
+    -- 2. Tự động móc nối quái mới spawn
+    workspace.DescendantAdded:Connect(function(v)
+        if v:IsA("Model") then
+            task.wait(0.5) -- Chờ load Humanoid
+            if v:FindFirstChild("Humanoid") then
+                hookModel(v)
+            end
+        end
+    end)

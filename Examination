@@ -2581,7 +2581,7 @@
                             VirtualInputManager:SendKeyEvent(false, key, false, game)
                         end
                     end
-                })
+                end)
             else
                 warn("[Auto QTE] Không tìm thấy Remote 'QTEInput'. Vui lòng kiểm tra lại game update.")
             end

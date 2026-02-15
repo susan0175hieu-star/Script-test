@@ -117,7 +117,7 @@
                 end
             end
         end
-    end
+    end 
 
     -- [ COMBAT VARIABLES MOVED TO TOP ]
     getgenv().aimEnabled = false
@@ -2351,6 +2351,7 @@
 
         -- 5. No Infection Screen (Xóa đỏ/nứt màn hình)
         local noInfectionConnection = nil
+        local noInfectionEnabled = false -- ✅ FIX: Shared state flag to track toggle status
         
         local function restoreInfectionDefaults()
             pcall(function()
@@ -2392,14 +2393,17 @@
         end
 
         local toggleNoInfection = createToggle(clarityFolder.Frame, "No Infection Screen", false, function(state)
+            noInfectionEnabled = state -- ✅ FIX: Update shared flag when toggle changes
             if noInfectionConnection then noInfectionConnection:Disconnect() noInfectionConnection = nil end
+            
+            -- ✅ FIX: Store descendantAddedConn in outer scope for cleanup
+            local descendantAddedConn = nil
             
             if state then
                 -- ✅ OPTIMIZED: Cache-based approach instead of scanning 1000+ objects every frame
                 local cachedLightingEffects = {}
                 local cachedUIElements = {}
                 local cachedCharacterEffects = {}
-                local descendantAddedConn = nil
                 
                 -- ✅ Function to check if element is infection-related
                 local function isInfectionElement(obj, nameLower)
@@ -2494,8 +2498,9 @@
                 end)
                 
                 -- ✅ CHỈ SCAN KHI LÀ INFECTED (Delayed scan)
+                -- ✅ FIX: Use noInfectionEnabled flag instead of captured state variable
                 task.spawn(function()
-                    while state and ScreenGui.Parent do
+                    while noInfectionEnabled and ScreenGui.Parent do
                         -- Check if infected
                         local isInfectedState = false
                         if LocalPlayer.Team then
@@ -2583,6 +2588,11 @@
                     task.wait(1) -- ✅ 1 Hz instead of 6 Hz
                 end)
             else
+                -- ✅ FIX: Disconnect descendantAddedConn when toggle is turned OFF
+                if descendantAddedConn then 
+                    descendantAddedConn:Disconnect() 
+                    descendantAddedConn = nil 
+                end
                 restoreInfectionDefaults()
             end
         end)

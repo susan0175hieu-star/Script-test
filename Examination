@@ -76,7 +76,7 @@
         TeamCheck = false,
         WallCheck = true,
         MaxDistance = 150, -- Optimized Range (Prevents lag)
-        AimHeightOffset = 0.15, -- �i?u ch?nh d? cao aim (0 = Head, -0.3 = C?, -0.6 = Ng?c, -1.0 = B?ng)
+        AimHeightOffset = 0.15, -- Γê⌐ΓöÉΓò£i?u ch?nh d? cao aim (0 = Head, -0.3 = C?, -0.6 = Ng?c, -1.0 = B?ng)
         ShielderOffset = 0.69,
         ShielderVerticalOffset = 0.2,
     }
@@ -415,23 +415,25 @@
         ["mutant4"] = {isMutant = true},
         ["mutant5"] = {isMutant = true},
         ["aaaaa"] = {isMutant = true}, 
-
-
+        
+        -- [ NEW NPC UPDATES ]
+        ["radaways"] = {isMutant = true},
+        ["dave"] = {isMutant = true},
+        ["crawlerlurker"] = {isMutant = true},
     }
 
     local function getTargetData(name)
-        local n = string.lower(name)
+        local n = string.lower(name):gsub("%d+", ""):gsub("%s+", "")
         
-        -- [ OPTIMIZATION 1 ] Direct Lookup (Si�u nhanh - O(1))
-        -- N?u t�n qu�i tr�ng kh?p 100% v?i danh s�ch b?n dua, n� l?y d? li?u ngay l?p t?c.
+        -- Direct Lookup with simplified name
         if TargetNPCs[n] then
             return TargetNPCs[n]
         end
 
-        -- [ OPTIMIZATION 2 ] Fallback Search
-        -- Ch? khi kh�ng t�m th?y t�n ch�nh x�c m?i ph?i ch?y v�ng l?p qu�t t? kh�a.
+        -- Fallback Search
         for targetName, data in pairs(TargetNPCs) do
-            if string.find(n, targetName) then
+            local cleanTargetName = string.lower(targetName):gsub("%d+", ""):gsub("%s+", "")
+            if string.find(n, cleanTargetName) then
                 return data
             end
         end
@@ -462,7 +464,7 @@
         local team = plr.Team
         if team then
             local tn = string.lower(team.Name)
-            if string.find(tn, "infect") or string.find(tn, "monster") or string.find(tn, "zombie") or string.find(tn, "v?t th� nghi?m") then
+            if string.find(tn, "infect") or string.find(tn, "monster") or string.find(tn, "zombie") or string.find(tn, "v?t thΓê⌐ΓöÉΓò£ nghi?m") then
                 return true
             end
         end
@@ -511,7 +513,8 @@
         local parentName = model.Parent and string.lower(model.Parent.Name) or ""
         local isMapObject = string.find(parentName, "decor") or string.find(parentName, "map") or string.find(parentName, "statue") or string.find(parentName, "prop")
 
-        if root and (root.Anchored or isMapObject) and not isSleeping then return end
+        local isConfirmedMonster = model:GetAttribute("ArchiveID") ~= nil or model:FindFirstChild("CharacterTeam") ~= nil
+        if root and (root.Anchored or isMapObject) and not isSleeping and not isConfirmedMonster then return end
 
         -- PRE-CACHE METADATA (Strict Player/NPC Separation)
         local metadata = nil
@@ -523,7 +526,11 @@
         -- [ AIM AT EVERYTHING ELSE ]
         -- If it's an NPC/Monster (even if it was a player), we aim.
         local targetData = getTargetData(model.Name)
+        local archiveId = model:GetAttribute("ArchiveID")
+        local isMonster = false
+
         if targetData then
+            isMonster = true
             metadata = {
                 isMutant = targetData.isMutant or false,
                 isBoss = targetData.isBoss or false,
@@ -531,13 +538,28 @@
                 elite = targetData.elite or false,
                 ignoreHealth = targetData.ignoreHealth or false
             }
+        elseif archiveId or model:FindFirstChild("CharacterTeam") then
+            isMonster = true
+            local idLower = archiveId and string.lower(tostring(archiveId)) or ""
+            local isBoss = idLower:find("boss") or idLower:find("chimera") or idLower:find("mikhail") or idLower:find("gilbert") or idLower:find("sin")
+            local isMutant = idLower:find("mutant") or idLower:find("archive") or idLower:find("kamikaze") or idLower:find("fury") or idLower:find("shielder") or idLower:find("slasher") or idLower:find("riser") or idLower:find("lurker")
+            metadata = {
+                isMutant = isMutant or false,
+                isBoss = isBoss or false,
+                isShield = isShieldEntity(model),
+                elite = idLower:find("elite") or false,
+                ignoreHealth = false
+            }
         else
             -- Check if it looks like an infected/viral model even if not in list
-            if string.find(lowName, "viral") or string.find(lowName, "infect") or string.find(lowName, "mutant") then
-                metadata = { isMutant = true, isBoss = false, isShield = false, elite = false }
-            else
-                return -- Skip unknown props/objects
+            if string.find(lowName, "viral") or string.find(lowName, "infect") or string.find(lowName, "mutant") or string.find(lowName, "rif") or string.find(lowName, "gunner") then
+                isMonster = true
+                metadata = { isMutant = true, isBoss = false, isShield = isShieldEntity(model), elite = false }
             end
+        end
+
+        if not isMonster then
+            return -- Skip unknown props/objects
         end
 
         table.insert(validEnemies, model)
@@ -594,7 +616,8 @@
         local origin = Camera.CFrame.Position
         local direction = part.Position - origin
         local params = RaycastParams.new()
-        params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+        local chars = workspace:FindFirstChild("Characters")
+        params.FilterDescendantsInstances = chars and {LocalPlayer.Character, Camera, chars} or {LocalPlayer.Character, Camera}
         params.FilterType = Enum.RaycastFilterType.Exclude
         params.IgnoreWater = true
         local result = workspace:Raycast(origin, direction, params)
@@ -1864,7 +1887,7 @@
                     local root = char:FindFirstChild("HumanoidRootPart")
                     local humanoid = char:FindFirstChildOfClass("Humanoid")
 
-                    -- ? EARLY DISTANCE CHECK: Ki?m tra kho?ng c�ch TRU?C KHI l�m g� kh�c
+                    -- ? EARLY DISTANCE CHECK: Ki?m tra kho?ng cΓê⌐ΓöÉΓò£ch TRU?C KHI lΓê⌐ΓöÉΓò£m gΓê⌐ΓöÉΓò£ khΓê⌐ΓöÉΓò£c
                     if not root or not humanoid then 
                         local existingHl = char:FindFirstChild("ESPHighlight")
                         if existingHl then existingHl:Destroy() end
@@ -1874,14 +1897,14 @@
                     local dist = (root.Position - myPos).Magnitude
                     local isStaff = staffCache[player]
                     
-                    -- ? EARLY EXIT: B? qua players qu� xa (tr? staff)
+                    -- ? EARLY EXIT: B? qua players quΓê⌐ΓöÉΓò£ xa (tr? staff)
                     if not isStaff and dist > 150 then
                         local existingHl = char:FindFirstChild("ESPHighlight")
                         if existingHl then existingHl:Destroy() end
-                        continue -- ? Skip t?t c? logic ph�a du?i cho players xa
+                        continue -- ? Skip t?t c? logic phΓê⌐ΓöÉΓò£a du?i cho players xa
                     end
                     
-                    -- Ch? ch?y ph?n n�y cho players G?N ho?c STAFF
+                    -- Ch? ch?y ph?n nΓê⌐ΓöÉΓò£y cho players G?N ho?c STAFF
                     if humanoid.Health <= 0 then 
                         local existingHl = char:FindFirstChild("ESPHighlight")
                         if existingHl then existingHl:Destroy() end
@@ -2036,22 +2059,22 @@
                         continue
                     end
                     
-                    -- ? EARLY DISTANCE CHECK: Ki?m tra kho?ng c�ch TRU?C KHI l�m g� kh�c
+                    -- ? EARLY DISTANCE CHECK: Ki?m tra kho?ng cΓê⌐ΓöÉΓò£ch TRU?C KHI lΓê⌐ΓöÉΓò£m gΓê⌐ΓöÉΓò£ khΓê⌐ΓöÉΓò£c
                     local dist = (root.Position - myPos).Magnitude
                     
                     -- ? CHECK IF CHIMERA (Boss with no distance limit)
                     local meta = entityCache[model]
                     local isChimera = meta and meta.isBoss and string.find(string.lower(model.Name), "chimera")
                     
-                    -- ? EARLY EXIT: Lo?i b? entities qu� xa ngay l?p t?c (150 studs threshold)
+                    -- ? EARLY EXIT: Lo?i b? entities quΓê⌐ΓöÉΓò£ xa ngay l?p t?c (150 studs threshold)
                     -- Exception: Chimera has no distance limit
                     if not isChimera and dist > 150 then
                         local highlight = model:FindFirstChild("InfectHighlight")
                         if highlight then highlight:Destroy() end
-                        continue -- ? Skip t?t c? logic ph�a du?i cho entities xa
+                        continue -- ? Skip t?t c? logic phΓê⌐ΓöÉΓò£a du?i cho entities xa
                     end
                     
-                    -- Ch? ch?y ph?n n�y cho entities G?N (< 150 studs)
+                    -- Ch? ch?y ph?n nΓê⌐ΓöÉΓò£y cho entities G?N (< 150 studs)
                     local humanoid = data.Humanoid
                     if not humanoid then
                         potentialEspTargets[model] = nil
@@ -2183,7 +2206,8 @@
                 local parentName = model.Parent and string.lower(model.Parent.Name) or ""
                 local isMapObject = string.find(parentName, "decor") or string.find(parentName, "map") or string.find(parentName, "statue") or string.find(parentName, "prop")
 
-                if (root.Anchored or isMapObject) and not isSleeping then 
+                local isConfirmedMonster = model:GetAttribute("ArchiveID") ~= nil or model:FindFirstChild("CharacterTeam") ~= nil
+                if (root.Anchored or isMapObject) and not isSleeping and not isConfirmedMonster then 
                     return false 
                 end
                 
@@ -2300,7 +2324,7 @@
         end)
         clarityFolder.AddSync(toggleFullBright)
 
-        -- 4. Hide Names (?n T�n)
+        -- 4. Hide Names (?n TΓê⌐ΓöÉΓò£n)
         local hideNamesConnection = nil
         local toggleHideNames = createToggle(clarityFolder.Frame, "Hide Names", false, function(state)
             if hideNamesConnection then hideNamesConnection:Disconnect() hideNamesConnection = nil end
@@ -2349,7 +2373,7 @@
         end)
         clarityFolder.AddSync(toggleHideNames)
 
-        -- 5. No Infection Screen (X�a d?/n?t m�n h�nh)
+        -- 5. No Infection Screen (XΓê⌐ΓöÉΓò£a d?/n?t mΓê⌐ΓöÉΓò£n hΓê⌐ΓöÉΓò£nh)
         local noInfectionConnection = nil
         local noInfectionEnabled = false -- ? FIX: Shared state flag to track toggle status
         
@@ -2472,7 +2496,7 @@
                         return
                     end
                     
-                    -- ? CH? HO?T �?NG KHI L� INFECTED
+                    -- ? CH? HO?T Γê⌐ΓöÉΓò£?NG KHI LΓê⌐ΓöÉΓò£ INFECTED
                     local isInfectedState = false
                     if LocalPlayer.Team then
                         local tn = string.lower(LocalPlayer.Team.Name)
@@ -2497,7 +2521,7 @@
                     end
                 end)
                 
-                -- ? CH? SCAN KHI L� INFECTED (Delayed scan)
+                -- ? CH? SCAN KHI LΓê⌐ΓöÉΓò£ INFECTED (Delayed scan)
                 -- ? FIX: Use noInfectionEnabled flag instead of captured state variable
                 task.spawn(function()
                     while noInfectionEnabled and ScreenGui.Parent do
@@ -2775,8 +2799,8 @@
 
                         -- 4. AIMBOT SMOOTHING (Interpolate only)
                         if aimEnabled and isAiming and sharedTarget.Pos then
-                            local offX = 0 -- Center (Ch�nh x�c tuy?t d?i)
-                            local offY = 0 -- Center (Ch�nh x�c tuy?t d?i v�o t�m �?u)
+                            local offX = 0 -- Center (ChΓê⌐ΓöÉΓò£nh xΓê⌐ΓöÉΓò£c tuy?t d?i)
+                            local offY = 0 -- Center (ChΓê⌐ΓöÉΓò£nh xΓê⌐ΓöÉΓò£c tuy?t d?i vΓê⌐ΓöÉΓò£o tΓê⌐ΓöÉΓò£m Γê⌐ΓöÉΓò£?u)
                             local finalPos = sharedTarget.Pos + (camRot.RightVector * offX) + (Vector3.new(0, 1, 0) * offY)
                             Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, finalPos), 0.25)
                         end
@@ -2838,7 +2862,7 @@
 
         -- 4. Noclip (Walk Through Walls) - Optimized with Part Caching
         local noclipConnection = nil
-        local noclipPartsCache = {} -- ? Cache parts d? tr�nh GetDescendants() m?i frame
+        local noclipPartsCache = {} -- ? Cache parts d? trΓê⌐ΓöÉΓò£nh GetDescendants() m?i frame
         local noclipCharAddedConn = nil
         
         local function updateNoclipCache()
@@ -2867,7 +2891,7 @@
                     updateNoclipCache()
                 end)
                 
-                -- ? Loop ch? iterate qua cached parts (kh�ng GetDescendants())
+                -- ? Loop ch? iterate qua cached parts (khΓê⌐ΓöÉΓò£ng GetDescendants())
                 noclipConnection = RunService.Stepped:Connect(function()
                     if not ScreenGui.Parent then
                         if noclipConnection then noclipConnection:Disconnect() end
@@ -2875,7 +2899,7 @@
                         return
                     end
                     
-                    -- ? Ch? loop qua cached parts (5-10 parts thay v� 50-100 descendants)
+                    -- ? Ch? loop qua cached parts (5-10 parts thay vΓê⌐ΓöÉΓò£ 50-100 descendants)
                     for i = 1, #noclipPartsCache do
                         local part = noclipPartsCache[i]
                         if part and part.Parent and part.CanCollide then
@@ -2930,14 +2954,14 @@
                 if not textLabel.Visible or textLabel.TextTransparency >= 0.3 then return end
                 
                 -- ? RELAXED SAFETY CHECK: Ch? skip n?u TH?C S? trong finisher animation
-                -- (Khi c? Anchored V� camera Scriptable c�ng l�c)
+                -- (Khi c? Anchored VΓê⌐ΓöÉΓò£ camera Scriptable cΓê⌐ΓöÉΓò£ng lΓê⌐ΓöÉΓò£c)
                 local char = LocalPlayer.Character
                 if char then
                     local root = char:FindFirstChild("HumanoidRootPart")
                     
-                    -- Ch? skip n?u �ANG TRONG FINISHER (Anchored + Scriptable camera)
+                    -- Ch? skip n?u Γê⌐ΓöÉΓò£ANG TRONG FINISHER (Anchored + Scriptable camera)
                     if root and root.Anchored and Camera.CameraType == Enum.CameraType.Scriptable then
-                        return -- ��y l� finisher animation, skip
+                        return -- Γê⌐ΓöÉΓò£Γê⌐ΓöÉΓò£y lΓê⌐ΓöÉΓò£ finisher animation, skip
                     end
                 end
                 
@@ -3076,7 +3100,7 @@
                 local targetChar = getClosestTarget()
                 if targetChar then
                     -- [ IMPROVED PART SELECTION ]
-                    -- Lu�n uu ti�n Head n?u c� th?, k? c? khi n� b? che m?t ch�t do animation ch?y
+                    -- LuΓê⌐ΓöÉΓò£n uu tiΓê⌐ΓöÉΓò£n Head n?u cΓê⌐ΓöÉΓò£ th?, k? c? khi nΓê⌐ΓöÉΓò£ b? che m?t chΓê⌐ΓöÉΓò£t do animation ch?y
                     local head = targetChar:FindFirstChild("Head")
                     local root = targetChar:FindFirstChild("HumanoidRootPart")
                     local part = targetChar:FindFirstChild(Settings.AimPart) or head -- Configurable Aim Part
@@ -3109,7 +3133,7 @@
                         local dist = (Camera.CFrame.Position - root.Position).Magnitude
 
                         -- [ CLOSE RANGE OPTIMIZATION ]
-                        -- Khi qu�i ch?y th?ng v�o m?t (< 15 studs), gi?m prediction d? tr�nh b?n tru?t qua d?u/vai
+                        -- Khi quΓê⌐ΓöÉΓò£i ch?y th?ng vΓê⌐ΓöÉΓò£o m?t (< 15 studs), gi?m prediction d? trΓê⌐ΓöÉΓò£nh b?n tru?t qua d?u/vai
                         if dist < 25 then -- Increased range for close combat
                             currentPrediction = currentPrediction * 0.2 -- drastically reduce prediction when close
                         end
@@ -3126,7 +3150,7 @@
                         local predictedPos = part.Position + (velocity * currentPrediction)
                         
                         -- [ HEIGHT OFFSET ADJUSTMENT ]
-                        -- �p d?ng di?u ch?nh d? cao to�n c?c
+                        -- Γê⌐ΓöÉΓò£p d?ng di?u ch?nh d? cao toΓê⌐ΓöÉΓò£n c?c
                         predictedPos = predictedPos + Vector3.new(0, Settings.AimHeightOffset, 0)
                         
                         -- Shielder Bypass Logic (Enhanced with Vertical Offset)
@@ -3162,6 +3186,19 @@
 
     createToggle(CombatTab, "AimBot", false, function(state)
         aimEnabled = state
+        wallCheckEnabled = state -- TΓö£┬ích h├ƒΓòù├║p s├ƒΓòæΓòín: Aimbot b├ƒΓòæ┬ít thΓö£┬╝ Wall Check b├ƒΓòæ┬ít
+    end)
+
+    createInputOnly(CombatTab, "Aim FOV", Settings.FOV, function(val)
+        aimFOV = tonumber(val) or 100
+    end)
+
+    createInputOnly(CombatTab, "Max Distance", Settings.MaxDistance, function(val)
+        Settings.MaxDistance = tonumber(val) or 150
+    end)
+
+    createInputOnly(CombatTab, "Smoothness", Settings.Smoothness, function(val)
+        aimSmoothness = tonumber(val) or 0.3
     end)
 
     local aimLabel = createLabel(CombatTab, "[ Working Only Holding RightClick ]")
@@ -3407,10 +3444,10 @@
                 { Name = "The Valve (Fix)", CF = CFrame.new(-224.644547, -35.9937668, -1635.37451, 0.019532565, 1.80628881e-08, -0.999809206, 9.699338e-10, 1, 1.80852844e-08, 0.999809206, -1.32300082e-09, 0.019532565), Wait = 0.8 },
                 { Name = "Generator 2", CF = CFrame.new(-134.50794983, -30.96421814, -1145.43286133, -0.9994004965, 0.0000000432, -0.0346207693, 0.0000000438, 1.0000000000, -0.0000000171, 0.0346207693, -0.0000000186, -0.9994004965), Wait = 0.8 },
                 { Name = "Generator 5", CF = CFrame.new(36.06135941, -10.22731590, -918.74865723, 0.9713337421, 0.0000000517, 0.2377200425, -0.0000000407, 1.0000000000, -0.0000000509, -0.2377200425, 0.0000000397, 0.9713337421), Wait = 0.8 },
-                { Name = "V? Tr� 6", CF = CFrame.new(-14.49906921, -10.22731590, -878.14532471, -0.9999992847, -0.0000000602, 0.0012093154, -0.0000000601, 1.0000000000, 0.0000000886, -0.0012093154, 0.0000000885, -0.9999992847), OneTime = true, Wait = 0.8 },
-                { Name = "V? Tr� 7", CF = CFrame.new(-18.79663467, -10.22731590, -878.16638184, -0.9997427464, -0.0000000090, 0.0226813145, -0.000000088, 1.0000000000, 0.000000132, -0.0226813145, 0.000000130, -0.9997427464), OneTime = true, Wait = 0.8 },
+                { Name = "V? TrΓê⌐ΓöÉΓò£ 6", CF = CFrame.new(-14.49906921, -10.22731590, -878.14532471, -0.9999992847, -0.0000000602, 0.0012093154, -0.0000000601, 1.0000000000, 0.0000000886, -0.0012093154, 0.0000000885, -0.9999992847), OneTime = true, Wait = 0.8 },
+                { Name = "V? TrΓê⌐ΓöÉΓò£ 7", CF = CFrame.new(-18.79663467, -10.22731590, -878.16638184, -0.9997427464, -0.0000000090, 0.0226813145, -0.000000088, 1.0000000000, 0.000000132, -0.0226813145, 0.000000130, -0.9997427464), OneTime = true, Wait = 0.8 },
                 { Name = "Generator 6", CF = CFrame.new(50.37744522, -8.89918613, -1059.40393066, -0.9982541800, 0.0000000512, -0.0590647198, 0.0000000528, 1.0000000000, -0.0000000251, 0.0590647198, -0.0000000282, -0.9982541800), Wait = 0.8 },
-                { Name = "V? Tr� 10", CF = CFrame.new(-12.41106796, -1.86550283, -1056.72827148, -0.0115981912, 0.0000000084, 0.9999327660, -0.000000003, 1.0000000000, -0.0000000084, -0.9999327660, -0.0000000039, -0.0115981912), Wait = 0.8 },
+                { Name = "V? TrΓê⌐ΓöÉΓò£ 10", CF = CFrame.new(-12.41106796, -1.86550283, -1056.72827148, -0.0115981912, 0.0000000084, 0.9999327660, -0.000000003, 1.0000000000, -0.0000000084, -0.9999327660, -0.0000000039, -0.0115981912), Wait = 0.8 },
                 { Name = "Generator 7", CF = CFrame.new(-35.32038116, 0.21124357, -1056.26574707, -0.2494641840, -0.0000000660, 0.9683839679, 0.0000000292, 1.0000000000, 0.0000000756, -0.9683839679, 0.0000000471, -0.2494641840), Wait = 0.8 },
                 { Name = "FINAL: Nh?n Badge Classless", CF = CFrame.new(-16.021, -2.724, -1056.318), SkipInteract = true, Wait = 0.1, Fast = true },
                 { Name = "FINAL: Nh?n Special Badge 1", CF = CFrame.new(-14.154, -13.127, -898.219), SkipInteract = true, Wait = 0.1, Fast = true },

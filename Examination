@@ -76,7 +76,7 @@
         TeamCheck = false,
         WallCheck = true,
         MaxDistance = 150, -- Optimized Range (Prevents lag)
-        AimHeightOffset = 0.15, -- Γê⌐ΓöÉΓò£i?u ch?nh d? cao aim (0 = Head, -0.3 = C?, -0.6 = Ng?c, -1.0 = B?ng)
+        AimHeightOffset = 0.15, -- ╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úi?u ch?nh d? cao aim (0 = Head, -0.3 = C?, -0.6 = Ng?c, -1.0 = B?ng)
         ShielderOffset = 0.69,
         ShielderVerticalOffset = 0.2,
     }
@@ -464,7 +464,7 @@
         local team = plr.Team
         if team then
             local tn = string.lower(team.Name)
-            if string.find(tn, "infect") or string.find(tn, "monster") or string.find(tn, "zombie") or string.find(tn, "v?t thΓê⌐ΓöÉΓò£ nghi?m") then
+            if string.find(tn, "infect") or string.find(tn, "monster") or string.find(tn, "zombie") or string.find(tn, "v?t th╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú nghi?m") then
                 return true
             end
         end
@@ -1887,7 +1887,7 @@
                     local root = char:FindFirstChild("HumanoidRootPart")
                     local humanoid = char:FindFirstChildOfClass("Humanoid")
 
-                    -- ? EARLY DISTANCE CHECK: Ki?m tra kho?ng cΓê⌐ΓöÉΓò£ch TRU?C KHI lΓê⌐ΓöÉΓò£m gΓê⌐ΓöÉΓò£ khΓê⌐ΓöÉΓò£c
+                    -- ? EARLY DISTANCE CHECK: Ki?m tra kho?ng c╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úch TRU?C KHI l╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úm g╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú kh╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úc
                     if not root or not humanoid then 
                         local existingHl = char:FindFirstChild("ESPHighlight")
                         if existingHl then existingHl:Destroy() end
@@ -1897,14 +1897,14 @@
                     local dist = (root.Position - myPos).Magnitude
                     local isStaff = staffCache[player]
                     
-                    -- ? EARLY EXIT: B? qua players quΓê⌐ΓöÉΓò£ xa (tr? staff)
+                    -- ? EARLY EXIT: B? qua players qu╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú xa (tr? staff)
                     if not isStaff and dist > 150 then
                         local existingHl = char:FindFirstChild("ESPHighlight")
                         if existingHl then existingHl:Destroy() end
-                        continue -- ? Skip t?t c? logic phΓê⌐ΓöÉΓò£a du?i cho players xa
+                        continue -- ? Skip t?t c? logic ph╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úa du?i cho players xa
                     end
                     
-                    -- Ch? ch?y ph?n nΓê⌐ΓöÉΓò£y cho players G?N ho?c STAFF
+                    -- Ch? ch?y ph?n n╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úy cho players G?N ho?c STAFF
                     if humanoid.Health <= 0 then 
                         local existingHl = char:FindFirstChild("ESPHighlight")
                         if existingHl then existingHl:Destroy() end
@@ -2059,22 +2059,22 @@
                         continue
                     end
                     
-                    -- ? EARLY DISTANCE CHECK: Ki?m tra kho?ng cΓê⌐ΓöÉΓò£ch TRU?C KHI lΓê⌐ΓöÉΓò£m gΓê⌐ΓöÉΓò£ khΓê⌐ΓöÉΓò£c
+                    -- ? EARLY DISTANCE CHECK: Ki?m tra kho?ng c╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úch TRU?C KHI l╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úm g╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú kh╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úc
                     local dist = (root.Position - myPos).Magnitude
                     
                     -- ? CHECK IF CHIMERA (Boss with no distance limit)
                     local meta = entityCache[model]
                     local isChimera = meta and meta.isBoss and string.find(string.lower(model.Name), "chimera")
                     
-                    -- ? EARLY EXIT: Lo?i b? entities quΓê⌐ΓöÉΓò£ xa ngay l?p t?c (150 studs threshold)
+                    -- ? EARLY EXIT: Lo?i b? entities qu╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú xa ngay l?p t?c (150 studs threshold)
                     -- Exception: Chimera has no distance limit
                     if not isChimera and dist > 150 then
                         local highlight = model:FindFirstChild("InfectHighlight")
                         if highlight then highlight:Destroy() end
-                        continue -- ? Skip t?t c? logic phΓê⌐ΓöÉΓò£a du?i cho entities xa
+                        continue -- ? Skip t?t c? logic ph╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úa du?i cho entities xa
                     end
                     
-                    -- Ch? ch?y ph?n nΓê⌐ΓöÉΓò£y cho entities G?N (< 150 studs)
+                    -- Ch? ch?y ph?n n╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úy cho entities G?N (< 150 studs)
                     local humanoid = data.Humanoid
                     if not humanoid then
                         potentialEspTargets[model] = nil
@@ -2324,7 +2324,7 @@
         end)
         clarityFolder.AddSync(toggleFullBright)
 
-        -- 4. Hide Names (?n TΓê⌐ΓöÉΓò£n)
+        -- 4. Hide Names (?n T╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ún)
         local hideNamesConnection = nil
         local toggleHideNames = createToggle(clarityFolder.Frame, "Hide Names", false, function(state)
             if hideNamesConnection then hideNamesConnection:Disconnect() hideNamesConnection = nil end
@@ -2373,7 +2373,7 @@
         end)
         clarityFolder.AddSync(toggleHideNames)
 
-        -- 5. No Infection Screen (XΓê⌐ΓöÉΓò£a d?/n?t mΓê⌐ΓöÉΓò£n hΓê⌐ΓöÉΓò£nh)
+        -- 5. No Infection Screen (X╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úa d?/n?t m╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ún h╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬únh)
         local noInfectionConnection = nil
         local noInfectionEnabled = false -- ? FIX: Shared state flag to track toggle status
         
@@ -2496,7 +2496,7 @@
                         return
                     end
                     
-                    -- ? CH? HO?T Γê⌐ΓöÉΓò£?NG KHI LΓê⌐ΓöÉΓò£ INFECTED
+                    -- ? CH? HO?T ╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú?NG KHI L╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú INFECTED
                     local isInfectedState = false
                     if LocalPlayer.Team then
                         local tn = string.lower(LocalPlayer.Team.Name)
@@ -2521,7 +2521,7 @@
                     end
                 end)
                 
-                -- ? CH? SCAN KHI LΓê⌐ΓöÉΓò£ INFECTED (Delayed scan)
+                -- ? CH? SCAN KHI L╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú INFECTED (Delayed scan)
                 -- ? FIX: Use noInfectionEnabled flag instead of captured state variable
                 task.spawn(function()
                     while noInfectionEnabled and ScreenGui.Parent do
@@ -2635,7 +2635,7 @@
     local tpOffsetY = 2.3 -- Fixed Height
 
     -- LABEL HINT
-    local tpHint = createLabel(VisualsTab, "Third Person: Use [T] to toggle")
+    local tpHint = createLabel(VisualsTab, "Third Person: Use [F3] to toggle")
     tpHint.Size = UDim2.new(1, 0, 0, 30)
     tpHint.Font = Enum.Font.GothamBold
     tpHint.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -2799,8 +2799,8 @@
 
                         -- 4. AIMBOT SMOOTHING (Interpolate only)
                         if aimEnabled and isAiming and sharedTarget.Pos then
-                            local offX = 0 -- Center (ChΓê⌐ΓöÉΓò£nh xΓê⌐ΓöÉΓò£c tuy?t d?i)
-                            local offY = 0 -- Center (ChΓê⌐ΓöÉΓò£nh xΓê⌐ΓöÉΓò£c tuy?t d?i vΓê⌐ΓöÉΓò£o tΓê⌐ΓöÉΓò£m Γê⌐ΓöÉΓò£?u)
+                            local offX = 0 -- Center (Ch╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬únh x╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úc tuy?t d?i)
+                            local offY = 0 -- Center (Ch╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬únh x╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úc tuy?t d?i v╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úo t╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úm ╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú?u)
                             local finalPos = sharedTarget.Pos + (camRot.RightVector * offX) + (Vector3.new(0, 1, 0) * offY)
                             Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, finalPos), 0.25)
                         end
@@ -2862,7 +2862,7 @@
 
         -- 4. Noclip (Walk Through Walls) - Optimized with Part Caching
         local noclipConnection = nil
-        local noclipPartsCache = {} -- ? Cache parts d? trΓê⌐ΓöÉΓò£nh GetDescendants() m?i frame
+        local noclipPartsCache = {} -- ? Cache parts d? tr╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬únh GetDescendants() m?i frame
         local noclipCharAddedConn = nil
         
         local function updateNoclipCache()
@@ -2891,7 +2891,7 @@
                     updateNoclipCache()
                 end)
                 
-                -- ? Loop ch? iterate qua cached parts (khΓê⌐ΓöÉΓò£ng GetDescendants())
+                -- ? Loop ch? iterate qua cached parts (kh╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úng GetDescendants())
                 noclipConnection = RunService.Stepped:Connect(function()
                     if not ScreenGui.Parent then
                         if noclipConnection then noclipConnection:Disconnect() end
@@ -2899,7 +2899,7 @@
                         return
                     end
                     
-                    -- ? Ch? loop qua cached parts (5-10 parts thay vΓê⌐ΓöÉΓò£ 50-100 descendants)
+                    -- ? Ch? loop qua cached parts (5-10 parts thay v╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú 50-100 descendants)
                     for i = 1, #noclipPartsCache do
                         local part = noclipPartsCache[i]
                         if part and part.Parent and part.CanCollide then
@@ -2950,20 +2950,11 @@
         local function checkAndPressQTE(textLabel)
             -- ? Wrap everything in pcall to prevent crashes
             pcall(function()
-                if not autoQteEnabled or not textLabel:IsA("TextLabel") then return end
-                if not textLabel.Visible or textLabel.TextTransparency >= 0.3 then return end
+                if not autoQteEnabled then return end
                 
-                -- ? RELAXED SAFETY CHECK: Ch? skip n?u TH?C S? trong finisher animation
-                -- (Khi c? Anchored VΓê⌐ΓöÉΓò£ camera Scriptable cΓê⌐ΓöÉΓò£ng lΓê⌐ΓöÉΓò£c)
-                local char = LocalPlayer.Character
-                if char then
-                    local root = char:FindFirstChild("HumanoidRootPart")
-                    
-                    -- Ch? skip n?u Γê⌐ΓöÉΓò£ANG TRONG FINISHER (Anchored + Scriptable camera)
-                    if root and root.Anchored and Camera.CameraType == Enum.CameraType.Scriptable then
-                        return -- Γê⌐ΓöÉΓò£Γê⌐ΓöÉΓò£y lΓê⌐ΓöÉΓò£ finisher animation, skip
-                    end
-                end
+
+                if not textLabel:IsA("TextLabel") then return end
+                if not textLabel.Visible or textLabel.TextTransparency >= 0.3 then return end
                 
                 -- Check if label is near screen center (standard for QTEs)
                 local screenCenter = Camera.ViewportSize / 2
@@ -3100,7 +3091,7 @@
                 local targetChar = getClosestTarget()
                 if targetChar then
                     -- [ IMPROVED PART SELECTION ]
-                    -- LuΓê⌐ΓöÉΓò£n uu tiΓê⌐ΓöÉΓò£n Head n?u cΓê⌐ΓöÉΓò£ th?, k? c? khi nΓê⌐ΓöÉΓò£ b? che m?t chΓê⌐ΓöÉΓò£t do animation ch?y
+                    -- Lu╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ún uu ti╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ún Head n?u c╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú th?, k? c? khi n╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú b? che m?t ch╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬út do animation ch?y
                     local head = targetChar:FindFirstChild("Head")
                     local root = targetChar:FindFirstChild("HumanoidRootPart")
                     local part = targetChar:FindFirstChild(Settings.AimPart) or head -- Configurable Aim Part
@@ -3133,7 +3124,7 @@
                         local dist = (Camera.CFrame.Position - root.Position).Magnitude
 
                         -- [ CLOSE RANGE OPTIMIZATION ]
-                        -- Khi quΓê⌐ΓöÉΓò£i ch?y th?ng vΓê⌐ΓöÉΓò£o m?t (< 15 studs), gi?m prediction d? trΓê⌐ΓöÉΓò£nh b?n tru?t qua d?u/vai
+                        -- Khi qu╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úi ch?y th?ng v╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úo m?t (< 15 studs), gi?m prediction d? tr╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬únh b?n tru?t qua d?u/vai
                         if dist < 25 then -- Increased range for close combat
                             currentPrediction = currentPrediction * 0.2 -- drastically reduce prediction when close
                         end
@@ -3150,7 +3141,7 @@
                         local predictedPos = part.Position + (velocity * currentPrediction)
                         
                         -- [ HEIGHT OFFSET ADJUSTMENT ]
-                        -- Γê⌐ΓöÉΓò£p d?ng di?u ch?nh d? cao toΓê⌐ΓöÉΓò£n c?c
+                        -- ╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬úp d?ng di?u ch?nh d? cao to╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ún c?c
                         predictedPos = predictedPos + Vector3.new(0, Settings.AimHeightOffset, 0)
                         
                         -- Shielder Bypass Logic (Enhanced with Vertical Offset)
@@ -3186,7 +3177,7 @@
 
     createToggle(CombatTab, "AimBot", false, function(state)
         aimEnabled = state
-        wallCheckEnabled = state -- TΓö£┬ích h├ƒΓòù├║p s├ƒΓòæΓòín: Aimbot b├ƒΓòæ┬ít thΓö£┬╝ Wall Check b├ƒΓòæ┬ít
+        wallCheckEnabled = state -- T╬ô├╢┬úΓö¼├¡ch hΓö£╞Æ╬ô├▓├╣Γö£Γòæp sΓö£╞Æ╬ô├▓├ª╬ô├▓├¡n: Aimbot bΓö£╞Æ╬ô├▓├ªΓö¼├¡t th╬ô├╢┬úΓö¼Γò¥ Wall Check bΓö£╞Æ╬ô├▓├ªΓö¼├¡t
     end)
 
     createInputOnly(CombatTab, "Aim FOV", Settings.FOV, function(val)
@@ -3444,10 +3435,10 @@
                 { Name = "The Valve (Fix)", CF = CFrame.new(-224.644547, -35.9937668, -1635.37451, 0.019532565, 1.80628881e-08, -0.999809206, 9.699338e-10, 1, 1.80852844e-08, 0.999809206, -1.32300082e-09, 0.019532565), Wait = 0.8 },
                 { Name = "Generator 2", CF = CFrame.new(-134.50794983, -30.96421814, -1145.43286133, -0.9994004965, 0.0000000432, -0.0346207693, 0.0000000438, 1.0000000000, -0.0000000171, 0.0346207693, -0.0000000186, -0.9994004965), Wait = 0.8 },
                 { Name = "Generator 5", CF = CFrame.new(36.06135941, -10.22731590, -918.74865723, 0.9713337421, 0.0000000517, 0.2377200425, -0.0000000407, 1.0000000000, -0.0000000509, -0.2377200425, 0.0000000397, 0.9713337421), Wait = 0.8 },
-                { Name = "V? TrΓê⌐ΓöÉΓò£ 6", CF = CFrame.new(-14.49906921, -10.22731590, -878.14532471, -0.9999992847, -0.0000000602, 0.0012093154, -0.0000000601, 1.0000000000, 0.0000000886, -0.0012093154, 0.0000000885, -0.9999992847), OneTime = true, Wait = 0.8 },
-                { Name = "V? TrΓê⌐ΓöÉΓò£ 7", CF = CFrame.new(-18.79663467, -10.22731590, -878.16638184, -0.9997427464, -0.0000000090, 0.0226813145, -0.000000088, 1.0000000000, 0.000000132, -0.0226813145, 0.000000130, -0.9997427464), OneTime = true, Wait = 0.8 },
+                { Name = "V? Tr╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú 6", CF = CFrame.new(-14.49906921, -10.22731590, -878.14532471, -0.9999992847, -0.0000000602, 0.0012093154, -0.0000000601, 1.0000000000, 0.0000000886, -0.0012093154, 0.0000000885, -0.9999992847), OneTime = true, Wait = 0.8 },
+                { Name = "V? Tr╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú 7", CF = CFrame.new(-18.79663467, -10.22731590, -878.16638184, -0.9997427464, -0.0000000090, 0.0226813145, -0.000000088, 1.0000000000, 0.000000132, -0.0226813145, 0.000000130, -0.9997427464), OneTime = true, Wait = 0.8 },
                 { Name = "Generator 6", CF = CFrame.new(50.37744522, -8.89918613, -1059.40393066, -0.9982541800, 0.0000000512, -0.0590647198, 0.0000000528, 1.0000000000, -0.0000000251, 0.0590647198, -0.0000000282, -0.9982541800), Wait = 0.8 },
-                { Name = "V? TrΓê⌐ΓöÉΓò£ 10", CF = CFrame.new(-12.41106796, -1.86550283, -1056.72827148, -0.0115981912, 0.0000000084, 0.9999327660, -0.000000003, 1.0000000000, -0.0000000084, -0.9999327660, -0.0000000039, -0.0115981912), Wait = 0.8 },
+                { Name = "V? Tr╬ô├¬ΓîÉ╬ô├╢├ë╬ô├▓┬ú 10", CF = CFrame.new(-12.41106796, -1.86550283, -1056.72827148, -0.0115981912, 0.0000000084, 0.9999327660, -0.000000003, 1.0000000000, -0.0000000084, -0.9999327660, -0.0000000039, -0.0115981912), Wait = 0.8 },
                 { Name = "Generator 7", CF = CFrame.new(-35.32038116, 0.21124357, -1056.26574707, -0.2494641840, -0.0000000660, 0.9683839679, 0.0000000292, 1.0000000000, 0.0000000756, -0.9683839679, 0.0000000471, -0.2494641840), Wait = 0.8 },
                 { Name = "FINAL: Nh?n Badge Classless", CF = CFrame.new(-16.021, -2.724, -1056.318), SkipInteract = true, Wait = 0.1, Fast = true },
                 { Name = "FINAL: Nh?n Special Badge 1", CF = CFrame.new(-14.154, -13.127, -898.219), SkipInteract = true, Wait = 0.1, Fast = true },
@@ -3845,13 +3836,18 @@
         end
     end)
 
+    local lastTPToggle = 0
     tKeyConnection = UserInputService.InputBegan:Connect(function(input, gpe)
         -- Ignore if user is typing (Chatbox/TextBox)
         local isTyping = UserInputService:GetFocusedTextBox() ~= nil
         if isTyping then return end
-        if input.KeyCode == Enum.KeyCode.T then
-            if getgenv().TP_Toggle_Func then
-                getgenv().TP_Toggle_Func()
+        if input.KeyCode == Enum.KeyCode.F3 then
+            local now = tick()
+            if now - lastTPToggle >= 1.5 then
+                lastTPToggle = now
+                if getgenv().TP_Toggle_Func then
+                    getgenv().TP_Toggle_Func()
+                end
             end
         end
 
